@@ -9,14 +9,9 @@
 </p>
 
 <h2 align="center">
-Download latest relese: 
-
-[![Latest release](https://img.shields.io/github/v/release/lvdsystems/lvdTerm)](https://github.com/lvdsystems/lvdTerm/releases/latest)
+  Download latest release:<br>
+  <a href="https://github.com/lvdsystems/lvdTerm/releases/latest"><img src="https://img.shields.io/github/v/release/lvdsystems/lvdTerm" alt="Latest release"></a>
 </h2>
-
-
-
-
 
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
