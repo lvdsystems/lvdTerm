@@ -44,7 +44,7 @@ rather than reproducing it as-is in CMake.
 ## Macro automation
 
 Noted directly as a gap versus Tera Term (its own scripting language,
-TTL) and MobaXTerm (macros + multi-exec broadcast) - lvdterm has neither
+TTL) - lvdterm has neither
 today. Rough shape, open for a contributor to actually design:
 
 - Record and replay a sequence of keystrokes/commands sent to a pane
