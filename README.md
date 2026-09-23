@@ -8,6 +8,16 @@
   A tabbed and splittable SSH / Telnet / Serial terminal emulator for Windows.
 </p>
 
+<h2 align="center">
+Download latest relese: 
+
+[![Latest release](https://img.shields.io/github/v/release/lvdsystems/lvdTerm)](https://github.com/lvdsystems/lvdTerm/releases/latest)
+</h2>
+
+
+
+
+
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
   <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D6.svg">
