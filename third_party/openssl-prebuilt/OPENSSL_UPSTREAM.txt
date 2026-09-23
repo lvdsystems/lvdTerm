@@ -1,0 +1,3 @@
+commit=f4dc4d58b48d346a8270183f89acf826d459b0ca
+date=Tue Aug 25 11:56:39 2026 +0000
+tag=openssl-3.5.8

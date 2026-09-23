@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest something lvdterm doesn't do yet.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search [existing issues](../issues) first - it may already be requested or explicitly scoped out (see the README's comparison table and roadmap notes for what's deliberately not implemented yet).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that lvdterm currently makes hard or impossible?
+      placeholder: e.g. "I regularly need to run the same command across 6 SSH panes at once and retyping it in each one is error-prone."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would the feature actually look/behave like? Mockups, screenshots of similar features in other tools, or just a plain description are all fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Workarounds you're using today, or other tools that do this well.
+    validations:
+      required: false

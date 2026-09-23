@@ -1,0 +1,5 @@
+// Embeds the app icon (see icons/app_icon.svg - MIT-licensed Tabler
+// Icons "terminal-2", see ../../THIRD_PARTY_LICENSES.md) into lvdterm.exe
+// itself, so Explorer/the taskbar/Alt+Tab all show it without needing a
+// separate .ico file shipped alongside the exe.
+IDI_ICON1 ICON "icons/app_icon.ico"

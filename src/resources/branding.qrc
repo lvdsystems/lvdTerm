@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/branding">
+        <file alias="logo_lvd.png">branding/logo_lvd.png</file>
+    </qresource>
+</RCC>

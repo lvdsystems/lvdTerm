@@ -1,0 +1,3 @@
+commit=a312b43325e3383c865a87bb1d26cb52e3292641
+date=Wed Oct 16 10:03:11 2024 +0200
+tag=libssh2-1.11.1

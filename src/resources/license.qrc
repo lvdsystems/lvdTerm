@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/license">
+        <file alias="LICENSE">../../LICENSE</file>
+        <file alias="THIRD_PARTY_LICENSES.md">../../THIRD_PARTY_LICENSES.md</file>
+    </qresource>
+</RCC>

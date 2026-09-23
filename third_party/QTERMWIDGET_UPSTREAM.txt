@@ -1,0 +1,5 @@
+source=https://github.com/lxqt/qtermwidget.git
+commit=98ff906bd94a6f748cd7fe8bd7428be0ff0a730a
+commit_date=Sun Sep 20 15:13:49 2026 +0200
+vendored_subset=lib/ (terminal emulation core only; see third_party/qtermwidget/VENDORING.md)
+license=GPL-2.0 (project LICENSE; see third_party/qtermwidget/LICENSE)

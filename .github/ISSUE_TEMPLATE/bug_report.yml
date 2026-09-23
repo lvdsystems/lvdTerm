@@ -1,0 +1,84 @@
+name: Bug report
+description: Something in lvdterm doesn't work the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A few notes before you start:
+        - Please search [existing issues](../issues) first - someone may have already hit this.
+        - lvdterm is Windows-only; if you're on another platform this almost certainly isn't the right project.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what actually happened instead?
+      placeholder: |
+        e.g. "Dragged a file out of the SFTP dock onto the desktop. Expected the file to download and drop normally. Instead the window froze for several seconds with no visible progress."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: As exact as you can make them - this is usually the difference between a fast fix and a guess.
+      placeholder: |
+        1. Open an SSH connection to ...
+        2. Open the SFTP dock, navigate to ...
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection-type
+    attributes:
+      label: Connection type involved
+      multiple: true
+      options:
+        - Serial
+        - Telnet
+        - Raw TCP
+        - SSH
+        - SFTP
+        - Not connection-specific
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: lvdterm version
+      description: Help > About lvdterm...
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build-type
+    attributes:
+      label: Build type (if built from source)
+      options:
+        - Installed release build
+        - Built from source - Release preset
+        - Built from source - Debug preset
+        - Not sure
+    validations:
+      required: false
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      placeholder: e.g. Windows 11 24H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or a crash backtrace
+      description: If the app crashed and you can reproduce it under a debugger (`lldb`/`windbg`), a backtrace is extremely helpful. A screenshot is fine for a visual issue.
+    validations:
+      required: false

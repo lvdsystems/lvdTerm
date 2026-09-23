@@ -1,0 +1,34 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "llvm-mingw",
+      "displayName": "llvm-mingw (default)",
+      "description": "Qt 6.11 llvm-mingw_64 kit, Ninja, clang/libc++",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/llvm-mingw",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/llvm-mingw_64",
+        "CMAKE_C_COMPILER": "C:/Qt/Tools/llvm-mingw1706_64/bin/x86_64-w64-mingw32-clang.exe",
+        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/llvm-mingw1706_64/bin/x86_64-w64-mingw32-clang++.exe",
+        "CMAKE_RC_COMPILER": "C:/Qt/Tools/llvm-mingw1706_64/bin/x86_64-w64-mingw32-windres.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/Qt/Tools/Ninja/ninja.exe"
+      }
+    },
+    {
+      "name": "llvm-mingw-release",
+      "inherits": "llvm-mingw",
+      "displayName": "llvm-mingw (release)",
+      "binaryDir": "${sourceDir}/build/llvm-mingw-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "llvm-mingw", "configurePreset": "llvm-mingw" },
+    { "name": "llvm-mingw-release", "configurePreset": "llvm-mingw-release" }
+  ]
+}
