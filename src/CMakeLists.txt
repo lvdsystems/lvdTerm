@@ -13,6 +13,8 @@ add_executable(lvdterm WIN32
     app/Theme.h
     terminal/ColorSchemes.cpp
     terminal/ColorSchemes.h
+    terminal/HexDumpWidget.cpp
+    terminal/HexDumpWidget.h
     terminal/KeyboardProfiles.cpp
     terminal/KeyboardProfiles.h
     terminal/TerminalSession.cpp
@@ -32,6 +34,8 @@ add_executable(lvdterm WIN32
     core/StateIcon.cpp
     core/StateIcon.h
     core/ReconnectPolicy.h
+    core/ThreadReaper.cpp
+    core/ThreadReaper.h
     core/Transport.h
     transports/loopback/LoopbackTransport.h
     transports/serial/SerialPortSettings.h

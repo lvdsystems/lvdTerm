@@ -36,6 +36,9 @@ public slots:
 
 private:
     SshConnectionSettings m_settings;
-    QThread m_thread;
+    // Heap-allocated (not a value member) and never QObject-parented so
+    // it can be handed off to ThreadReaper on teardown instead of
+    // blocking this destructor until it finishes - see ~SshTransport().
+    QThread *m_thread = nullptr;
     SshWorker *m_worker = nullptr;
 };

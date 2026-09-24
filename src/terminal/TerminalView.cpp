@@ -1,6 +1,8 @@
 #include "TerminalView.h"
 
+#include <QAction>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QFont>
 #include <QHBoxLayout>
@@ -14,6 +16,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include "HexDumpWidget.h"
 #include "HistorySearch.h"
 #include "ScreenWindow.h"
 #include "TerminalSession.h"
@@ -32,10 +35,23 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     , m_recreate(std::move(recreate))
     , m_sshSettings(std::move(sshSettings))
     , m_sessionSnapshot(std::move(sessionSnapshot))
+    , m_hexMode(m_sessionSnapshot && m_sessionSnapshot->viewer == ConnectionProfile::Viewer::Hex)
     , m_reconnectTimer(new QTimer(this))
     , m_countdownTimer(new QTimer(this))
 {
     m_transport->setParent(this);
+
+    if (m_hexMode) {
+        m_hexView = new HexDumpWidget(this);
+        // m_display is still constructed unconditionally above (simpler
+        // than conditionally-constructed members) but never added to the
+        // layout in this mode - reported directly as a visual glitch (an
+        // unstyled blank rectangle): a child widget that's never put in
+        // a layout still inherits visibility from its shown parent and
+        // paints itself at whatever default/stale geometry it happens to
+        // have, it doesn't just stay invisible on its own.
+        m_display->hide();
+    }
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -49,69 +65,95 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     m_statusTextLabel->setStyleSheet(QStringLiteral("color: palette(mid);"));
     statusLayout->addWidget(m_statusIconLabel);
     statusLayout->addWidget(m_statusTextLabel, 1);
+
+    statusBar->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(statusBar, &QWidget::customContextMenuRequested, this, [this, statusBar](const QPoint &pos) {
+        QMenu menu(this);
+        // Available regardless of the overlay's own state - a second,
+        // direct path to reconnect that doesn't depend on the
+        // auto-reconnect backoff/overlay machinery working correctly -
+        // *except* while a connection attempt is already in progress.
+        // Reported directly (a real crash, not just a bad idea): tearing
+        // down a Transport that's mid-connect can leave it with no way
+        // to safely/promptly stop whatever blocking or in-flight
+        // operation it's in the middle of - true of any transport, not
+        // just one kind - so the structural fix is to never let this be
+        // triggered while Connecting, for every transport uniformly,
+        // rather than chasing down and bounding each transport's own
+        // internal blocking operations one at a time.
+        QAction *reconnectAction = menu.addAction(QStringLiteral("Reconnect"));
+        reconnectAction->setEnabled(m_transport->state() != Transport::State::Connecting);
+        connect(reconnectAction, &QAction::triggered, this, &TerminalView::doReconnectNow);
+        // Clear Screen/Clear Buffer act on the VT100 emulation, which
+        // hex mode doesn't have (see m_hexMode) - nothing for them to do.
+        if (!m_hexMode) {
+            menu.addSeparator();
+            connect(menu.addAction(QStringLiteral("Clear Screen")), &QAction::triggered, this, &TerminalView::clearScreen);
+            connect(menu.addAction(QStringLiteral("Clear Buffer")), &QAction::triggered, this, &TerminalView::clearBuffer);
+        }
+        menu.exec(statusBar->mapToGlobal(pos));
+    });
+
     layout->addWidget(statusBar); // stretch 0 (default): fixed to its sizeHint, above the display
-    layout->addWidget(m_display, 1); // stretch 1: take all space not needed by the status bar above
+    layout->addWidget(m_hexMode ? static_cast<QWidget *>(m_hexView) : static_cast<QWidget *>(m_display), 1); // stretch 1: everything not needed by the status bar
     updateStatusBar(m_transport->state());
 
-    applyAppearance();
-    m_display->setScrollBarPosition(QTermWidget::ScrollBarRight);
-    m_display->setKeyboardCursorShape(QTermWidget::KeyboardCursorShape::BlockCursor);
-    m_display->setBlinkingCursor(true);
+    if (!m_hexMode) {
+        applyAppearance();
+        m_display->setScrollBarPosition(QTermWidget::ScrollBarRight);
+        m_display->setKeyboardCursorShape(QTermWidget::KeyboardCursorShape::BlockCursor);
+        m_display->setBlinkingCursor(true);
+    }
 
-    // Auto-copy on select: TerminalDisplay's own setSelection() (called
-    // internally whenever the mouse selection changes) only ever writes to
-    // QClipboard::Selection - the X11 "primary selection", which doesn't
-    // exist on Windows (QClipboard::supportsSelection() is false there), so
-    // that call is silently a no-op on this platform. copyAvailable(bool)
-    // fires on *every* selection change though, including every intermediate
-    // mouseMoveEvent while a drag is still in progress (extendSelection()
-    // calls setSelectionStart/setSelectionEnd on each move) - copying to the
-    // real, OS-level clipboard on every one of those (a synchronous call
-    // that other apps, e.g. Windows' own clipboard history, can hook and
-    // slow down further) made drag-selecting visibly lag the whole GUI.
-    // isBusySelecting(bool) brackets exactly one in-progress
-    // drag/double-click/triple-click selection (true at its start, false
-    // once the mouse is released - TerminalDisplay.cpp's mouseReleaseEvent/
-    // mouseMoveEvent/mouseTripleClickEvent), so gate the frequent signal on
-    // it and instead do the actual copy once, when the selection settles.
-    connect(m_display, &TerminalDisplay::isBusySelecting, this, [this](bool busy) {
-        m_selectionBusy = busy;
-        if (!busy)
-            m_display->copyClipboard(); // no-op if selection ended up empty (e.g. a plain click)
-    });
-    connect(m_display, &TerminalDisplay::copyAvailable, this, [this](bool available) {
-        if (available && !m_selectionBusy)
-            m_display->copyClipboard();
-    });
+    if (!m_hexMode) {
+        // Auto-copy on select: TerminalDisplay's own setSelection() (called
+        // internally whenever the mouse selection changes) only ever writes to
+        // QClipboard::Selection - the X11 "primary selection", which doesn't
+        // exist on Windows (QClipboard::supportsSelection() is false there), so
+        // that call is silently a no-op on this platform. copyAvailable(bool)
+        // fires on *every* selection change though, including every intermediate
+        // mouseMoveEvent while a drag is still in progress (extendSelection()
+        // calls setSelectionStart/setSelectionEnd on each move) - copying to the
+        // real, OS-level clipboard on every one of those (a synchronous call
+        // that other apps, e.g. Windows' own clipboard history, can hook and
+        // slow down further) made drag-selecting visibly lag the whole GUI.
+        // isBusySelecting(bool) brackets exactly one in-progress
+        // drag/double-click/triple-click selection (true at its start, false
+        // once the mouse is released - TerminalDisplay.cpp's mouseReleaseEvent/
+        // mouseMoveEvent/mouseTripleClickEvent), so gate the frequent signal on
+        // it and instead do the actual copy once, when the selection settles.
+        connect(m_display, &TerminalDisplay::isBusySelecting, this, [this](bool busy) {
+            m_selectionBusy = busy;
+            if (!busy)
+                m_display->copyClipboard(); // no-op if selection ended up empty (e.g. a plain click)
+        });
+        connect(m_display, &TerminalDisplay::copyAvailable, this, [this](bool available) {
+            if (available && !m_selectionBusy)
+                m_display->copyClipboard();
+        });
 
-    // Right-click context menu: configureRequest() is TerminalDisplay's own
-    // "user right-clicked (and no mouse-aware program has the mouse right
-    // now, or Shift is held)" signal, meant for exactly this.
-    connect(m_display, &TerminalDisplay::configureRequest, this, [this](const QPoint &position) {
-        QMenu menu(m_display);
-        QAction *clearBufferAction = menu.addAction(QStringLiteral("Clear Buffer"));
-        connect(clearBufferAction, &QAction::triggered, this, &TerminalView::clearBuffer);
-        QAction *clearScreenAction = menu.addAction(QStringLiteral("Clear Screen"));
-        connect(clearScreenAction, &QAction::triggered, this, &TerminalView::clearScreen);
-        menu.addSeparator();
-        QAction *copyAction = menu.addAction(QStringLiteral("Copy"));
-        copyAction->setEnabled(!m_display->screenWindow()->selectedText(false).isEmpty());
-        connect(copyAction, &QAction::triggered, this, &TerminalView::copySelection);
-        QAction *pasteAction = menu.addAction(QStringLiteral("Paste"));
-        connect(pasteAction, &QAction::triggered, this, &TerminalView::pasteFromClipboard);
-        menu.exec(m_display->mapToGlobal(position));
-    });
+        // Right-click paste: configureRequest() is TerminalDisplay's own
+        // "user right-clicked (and no mouse-aware program has the mouse right
+        // now, or Shift is held)" signal - the terminal's own context menu
+        // (added in an earlier round: Clear Buffer/Clear Screen/Copy/Paste)
+        // is removed per direct request, replaced with right-click pasting
+        // directly. MainWindow's top-level "Terminal" menu still offers all
+        // four actions, kept as-is.
+        connect(m_display, &TerminalDisplay::configureRequest, this, [this](const QPoint &) { m_display->pasteClipboard(); });
 
-    m_session->setTransport(m_transport);
-    // See KeyboardProfiles.h/ConnectionProfile::keyboardProfile: an
-    // explicit per-connection choice wins; otherwise fall back to the
-    // global default (itself "default" unless changed in Settings).
-    const QString keyboardProfile =
-        (m_sessionSnapshot && !m_sessionSnapshot->keyboardProfile.isEmpty()) ? m_sessionSnapshot->keyboardProfile : AppSettings::instance().defaultKeyboardProfile();
-    m_session->setKeyboardProfile(keyboardProfile);
-    m_session->attachView(m_display);
+        m_session->setTransport(m_transport);
+        // See KeyboardProfiles.h/ConnectionProfile::keyboardProfile: an
+        // explicit per-connection choice wins; otherwise fall back to the
+        // global default (itself "default" unless changed in Settings).
+        const QString keyboardProfile = (m_sessionSnapshot && !m_sessionSnapshot->keyboardProfile.isEmpty()) ? m_sessionSnapshot->keyboardProfile
+                                                                                                               : AppSettings::instance().defaultKeyboardProfile();
+        m_session->setKeyboardProfile(keyboardProfile);
+        m_session->attachView(m_display);
 
-    setFocusProxy(m_display);
+        setFocusProxy(m_display);
+    } else {
+        setFocusProxy(m_hexView);
+    }
 
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, this, &TerminalView::doReconnectNow);
@@ -125,6 +167,14 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     connect(findShortcut, &QShortcut::activated, this, &TerminalView::showFindBar);
 
     hookTransportSignals();
+
+    // Auto-start session logging for a saved connection that asks for it
+    // (ConnectionEditDialog), rather than needing MainWindow's ad hoc
+    // "Log Session to File..." action every time. Starts immediately
+    // (not gated on reaching Connected) so nothing - including any
+    // pre-connection banner - is missed.
+    if (m_sessionSnapshot && m_sessionSnapshot->logSessionToFile && !m_sessionSnapshot->logFilePath.isEmpty())
+        startLogging(m_sessionSnapshot->logFilePath, m_sessionSnapshot->logIncludeTimestamps);
 }
 
 void TerminalView::applyAppearance()
@@ -165,6 +215,16 @@ void TerminalView::clearBuffer()
 
 void TerminalView::ensureCorrectSize(const QSize &size)
 {
+    resize(size);
+
+    if (m_hexMode) {
+        // HexDumpWidget has no column/line concept to re-derive from
+        // geometry (unlike TerminalDisplay below) - an ordinary resize is
+        // enough.
+        m_hexView->resize(size);
+        return;
+    }
+
     // resize() updates real widget geometry (unlike a synthetic
     // QResizeEvent alone, which would just re-derive columns/lines from
     // whatever geometry the display already has - insufficient here since
@@ -174,7 +234,6 @@ void TerminalView::ensureCorrectSize(const QSize &size)
     // widget's actual current geometry, so resize() alone triggers the fix
     // whenever the size actually changes; the explicit event covers the
     // (harmless either way) case where it happens to already match.
-    resize(size);
     m_display->resize(size);
     QResizeEvent event(m_display->size(), QSize());
     QCoreApplication::sendEvent(m_display, &event);
@@ -186,16 +245,24 @@ void TerminalView::hookTransportSignals()
     connect(m_transport, &Transport::stateChanged, this, &TerminalView::onStateChanged);
     connect(m_transport, &Transport::errorOccurred, this, &TerminalView::errorOccurred);
     connect(m_transport, &Transport::readyRead, this, &TerminalView::onDataForLogging);
+
+    // Hex mode: bytes go straight to the dump view instead of through
+    // m_session/the VT100 emulation (see m_hexMode's declaration).
+    if (m_hexMode)
+        connect(m_transport, &Transport::readyRead, m_hexView, &HexDumpWidget::appendData);
 }
 
 void TerminalView::replaceTransport(Transport *newTransport)
 {
     Transport *old = m_transport;
     disconnect(old, nullptr, this, nullptr);
+    if (m_hexMode)
+        disconnect(old, nullptr, m_hexView, nullptr); // hookTransportSignals() connects readyRead straight to m_hexView, not `this`
 
     m_transport = newTransport;
     m_transport->setParent(this);
-    m_session->setTransport(m_transport);
+    if (!m_hexMode)
+        m_session->setTransport(m_transport);
     hookTransportSignals();
 
     old->deleteLater();
@@ -209,13 +276,23 @@ void TerminalView::onStateChanged(Transport::State state)
         m_attempt = 0;
         m_gaveUp = false;
         hideOverlay();
-    } else if ((state == Transport::State::Disconnected || state == Transport::State::Error) && m_autoReconnect && !m_gaveUp) {
+    } else if (state == Transport::State::Disconnected || state == Transport::State::Error) {
         // The only way this view sees a Disconnected/Error transition
         // while still alive is the far end/link actually dying: there is
         // no "disconnect but keep the pane open" action, and closing the
         // pane deletes this object rather than leaving it around to
         // observe a deliberate disconnect.
-        scheduleReconnect();
+        if (m_autoReconnect) {
+            if (!m_gaveUp)
+                scheduleReconnect();
+        } else {
+            // Reported directly: with auto-reconnect off for this pane,
+            // nothing ever showed the overlay at all - scheduleReconnect()
+            // is the only place that does, and it's never called here.
+            // A disconnected pane must always have *some* visible way
+            // back, regardless of this setting.
+            showManualReconnectPrompt();
+        }
     }
 }
 
@@ -242,6 +319,14 @@ void TerminalView::scheduleReconnect()
     m_reconnectTimer->start(m_secondsRemaining * 1000);
 }
 
+void TerminalView::showManualReconnectPrompt()
+{
+    ensureOverlay();
+    m_overlayLabel->setText(QStringLiteral("Disconnected."));
+    m_overlayButton->setText(QStringLiteral("Reconnect Now"));
+    showOverlay();
+}
+
 void TerminalView::tickCountdown()
 {
     --m_secondsRemaining;
@@ -262,9 +347,31 @@ void TerminalView::updateOverlayText()
 
 void TerminalView::doReconnectNow()
 {
+    // Defense in depth alongside the status bar menu's own check: never
+    // tear down a Transport that's still in the middle of connecting,
+    // regardless of which of doReconnectNow()'s several callers (the
+    // status bar menu, the overlay button, the automatic backoff timer)
+    // triggered this - none of the others can currently reach here while
+    // Connecting either, but this makes it structurally true rather than
+    // relying on every current and future caller remembering to check.
+    if (m_transport->state() == Transport::State::Connecting)
+        return;
+
     m_countdownTimer->stop();
     m_reconnectTimer->stop();
     hideOverlay();
+
+    // Reported directly: a manual "Retry Now" that itself fails again
+    // could silently strand the pane with no overlay and no way back -
+    // onStateChanged()'s Disconnected/Error branch only calls
+    // scheduleReconnect() while !m_gaveUp, but nothing here ever cleared
+    // m_gaveUp after a manual retry, so a second failure just skipped
+    // straight past that branch with the overlay already hidden above.
+    // Resetting here means a failed manual/automatic retry always
+    // resumes the normal backoff-then-overlay flow instead of going
+    // silent.
+    m_gaveUp = false;
+    m_attempt = 0;
 
     replaceTransport(m_recreate());
     connectToHost();
@@ -293,10 +400,16 @@ void TerminalView::ensureOverlay()
 
     m_overlayButton = new QPushButton(m_overlay);
     connect(m_overlayButton, &QPushButton::clicked, this, [this] {
-        if (m_gaveUp)
-            doReconnectNow();
-        else
+        // Whether a countdown is actively running - not m_gaveUp - is
+        // what actually distinguishes "Cancel" from "Reconnect Now"/
+        // "Retry Now": m_gaveUp is false in the auto-reconnect-disabled
+        // case too (showManualReconnectPrompt()), which also needs this
+        // button to reconnect, not cancel a countdown that was never
+        // started.
+        if (m_countdownTimer->isActive() || m_reconnectTimer->isActive())
             cancelReconnect();
+        else
+            doReconnectNow();
     });
 
     auto *layout = new QVBoxLayout(m_overlay);
@@ -439,7 +552,7 @@ void TerminalView::performSearch(bool forwards)
     search->deleteLater();
 }
 
-void TerminalView::startLogging(const QString &path)
+void TerminalView::startLogging(const QString &path, bool includeTimestamps)
 {
     stopLogging();
 
@@ -449,6 +562,8 @@ void TerminalView::startLogging(const QString &path)
         return;
     }
     m_logFile = file;
+    m_logIncludeTimestamps = includeTimestamps;
+    m_logAtLineStart = true; // a fresh log (or a fresh append session) starts a new line
 }
 
 void TerminalView::stopLogging()
@@ -459,8 +574,35 @@ void TerminalView::stopLogging()
 
 void TerminalView::onDataForLogging(const QByteArray &data)
 {
-    if (m_logFile)
+    if (!m_logFile)
+        return;
+
+    if (!m_logIncludeTimestamps) {
         m_logFile->write(data);
+        return;
+    }
+
+    // Raw transport bytes, not rendered lines - chunk boundaries don't
+    // align to lines at all (a chunk can be a partial line, several
+    // lines, or land mid-escape-sequence), so "per line" means: prepend
+    // a timestamp right after every '\n', tracked across calls via
+    // m_logAtLineStart since the next line's start can arrive in a
+    // later, separate chunk.
+    int start = 0;
+    while (start < data.size()) {
+        if (m_logAtLineStart) {
+            m_logFile->write(QDateTime::currentDateTime().toString(QStringLiteral("[HH:mm:ss.zzz] ")).toUtf8());
+            m_logAtLineStart = false;
+        }
+        const int newlineIndex = data.indexOf('\n', start);
+        if (newlineIndex == -1) {
+            m_logFile->write(data.mid(start));
+            break;
+        }
+        m_logFile->write(data.mid(start, newlineIndex - start + 1));
+        m_logAtLineStart = true;
+        start = newlineIndex + 1;
+    }
 }
 
 void TerminalView::updateStatusBar(Transport::State state)

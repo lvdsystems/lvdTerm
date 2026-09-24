@@ -10,6 +10,7 @@ class QComboBox;
 class QStackedWidget;
 class QLabel;
 class QCheckBox;
+class QPushButton;
 class SerialSettingsWidget;
 class SshSettingsWidget;
 
@@ -31,6 +32,7 @@ public:
 
 private:
     void updateTypeStack();
+    void browseLogFilePath();
 
     ConnectionProfile::Type indexToType(int index) const;
     int typeToIndex(ConnectionProfile::Type type) const;
@@ -42,6 +44,13 @@ private:
     QComboBox *m_typeCombo = nullptr;
     QCheckBox *m_autoReconnectCheck = nullptr;
     QComboBox *m_keyboardProfileCombo = nullptr; // see KeyboardProfiles.h - applies regardless of type
+    QComboBox *m_viewerCombo = nullptr; // Terminal or Hex - see ConnectionProfile::Viewer
+    QCheckBox *m_logSessionCheck = nullptr;
+    QLineEdit *m_logFilePathEdit = nullptr;
+    QPushButton *m_logFileBrowseButton = nullptr;
+    // Only ever offered here, per saved connection - not a global
+    // AppSettings default, and not on the ad hoc quick-log action.
+    QCheckBox *m_logTimestampCheck = nullptr;
     QStackedWidget *m_typeStack = nullptr;
 
     SerialSettingsWidget *m_serialWidget = nullptr;

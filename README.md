@@ -38,12 +38,24 @@ part of [LVD Open](https://www.lvdopen.eu).
 |---|---|
 | ![Main window](docs/screenshots/main-window.png) | ![SFTP dock](docs/screenshots/sftp-dock.png) |
 | ![Split view](docs/screenshots/split-view.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Connection editor: Serial and SSH](docs/screenshots/connection_editor.png) | |
 
 `htop` rendering correctly - full-screen redraws, live-updating colored
 bars, and heavy box-drawing/alignment all come from the vendored
 terminal-emulation core, not anything lvdterm adds on top:
 
 ![htop running over SSH, alongside the SFTP dock](docs/screenshots/htop.png)
+
+Every connection can use a Hex viewer instead of the terminal - useful
+for a Serial/SSH/Telnet link carrying a binary protocol rather than
+readable text. Each pane gets its own offset/hex/ASCII view with a
+"Group by" selector (Byte/Word/Dword, purely visual clustering - the
+underlying bytes are never reordered), and it's a per-connection setting
+picked in the connection editor above, so a Serial port streaming binary
+telemetry and one running a normal shell can sit side by side, each in
+the view that actually makes sense for it:
+
+![Two Hex viewer panes side by side, one grouped by byte and one by word](docs/screenshots/hexview.png)
 
 ## Features
 
@@ -65,12 +77,15 @@ terminal-emulation core, not anything lvdterm adds on top:
   drag-and-drop upload for files and whole folders (recursive), a
   right-click context menu (rename/delete/download), and a non-blocking
   toolbar for everything else.
-- **Terminal niceties**: auto-copy on selection, a right-click context
-  menu (Clear Buffer / Clear Screen / Copy / Paste) mirrored in a
-  "Terminal" menu, Ctrl+F scrollback search, session logging to a file,
-  and selectable keyboard-emulation profiles (Default / Linux Console /
-  VT100) for keys that differ between them (arrows, Home/End, function
-  keys, Backspace).
+- **Terminal niceties**: auto-copy on selection, right-click to paste, a
+  status bar context menu (Reconnect / Clear Screen / Clear Buffer)
+  mirrored in a "Terminal" menu, Ctrl+F scrollback search, session
+  logging to a file (with an optional per-line timestamp), and selectable
+  keyboard-emulation profiles (Default / Linux Console / VT100) for keys
+  that differ between them (arrows, Home/End, function keys, Backspace).
+- **Hex viewer**: a per-connection alternative to the terminal for
+  Serial/SSH/Telnet links carrying a binary protocol - offset/hex/ASCII
+  columns with byte/word/dword grouping.
 - **Appearance**: Dark/Light themes, a few built-in color schemes, and a
   configurable monospaced terminal font.
 
@@ -100,6 +115,12 @@ or PR.
 No signed installer is published yet (see [`installer/lvdterm.iss`](installer/lvdterm.iss)
 for the [Inno Setup](https://jrsoftware.org/isinfo.php) script used to
 build one, once compiled). Until then, build from source below.
+
+A portable, extract-and-run build (no installer, no admin rights, no
+registry/Start Menu changes) can be produced from a built Release preset
+with [`installer/build-portable.bat`](installer/build-portable.bat) - it
+zips up the same `dist\` folder the installer above packages, into
+`dist\lvdterm-<version>-portable.zip`.
 
 ## Building from source
 

@@ -3,12 +3,15 @@
 #include <QMessageBox>
 #include <QMetaObject>
 
+#include "core/ThreadReaper.h"
+
 SftpSession::SftpSession(SshConnectionSettings settings, QObject *parent)
     : QObject(parent)
+    , m_thread(new QThread)
     , m_client(new SftpClient(std::move(settings), this))
 {
-    m_client->moveToThread(&m_thread);
-    connect(&m_thread, &QThread::finished, m_client, &QObject::deleteLater);
+    m_client->moveToThread(m_thread);
+    connect(m_thread, &QThread::finished, m_client, &QObject::deleteLater);
 
     connect(m_client, &SftpClient::connected, this, &SftpSession::connected);
     connect(m_client, &SftpClient::connectFailed, this, &SftpSession::connectFailed);
@@ -20,14 +23,14 @@ SftpSession::SftpSession(SshConnectionSettings settings, QObject *parent)
     connect(m_client, &SftpClient::transferProgress, this, &SftpSession::transferProgress);
     connect(m_client, &SftpClient::transferFinished, this, &SftpSession::transferFinished);
 
-    m_thread.start();
+    m_thread->start();
 }
 
 SftpSession::~SftpSession()
 {
     QMetaObject::invokeMethod(m_client, "disconnectFromHost", Qt::QueuedConnection);
-    m_thread.quit();
-    m_thread.wait(3000);
+    m_thread->quit();
+    ThreadReaper::detach(m_thread);
 }
 
 void SftpSession::connectToHost()

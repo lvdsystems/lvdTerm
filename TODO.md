@@ -2,7 +2,7 @@
 
 Concrete, unclaimed work a contributor could pick up. Not a full roadmap —
 see the README for the broader feature picture and what's deliberately
-out of scope for now. Open an issue before starting on either of these
+out of scope for now. Open an issue before starting on any of these
 (see [CONTRIBUTING.md](CONTRIBUTING.md)) so effort doesn't collide.
 
 ## Build OpenSSL from source instead of vendoring a prebuilt binary

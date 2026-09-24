@@ -31,6 +31,30 @@ struct ConnectionProfile
     // type, so it lives here rather than nested under serial/telnet/ssh.
     QString keyboardProfile;
 
+    // Session logging - auto-starts TerminalView::startLogging(logFilePath)
+    // on every connect when enabled, rather than needing the ad hoc
+    // "Log Session to File..." action each time. logIncludeTimestamps
+    // (a "HH:mm:ss.zzz " prefix per line - see TerminalView::
+    // onDataForLogging()) is deliberately only ever set here, per saved
+    // connection - not a global AppSettings default, and not offered on
+    // the ad hoc quick-log action.
+    bool logSessionToFile = false;
+    QString logFilePath;
+    bool logIncludeTimestamps = false;
+
+    // What TerminalView shows the incoming bytes as. Hex bypasses the
+    // vendored VT100 emulation entirely (see TerminalView/HexDumpWidget) -
+    // useful for a serial/raw connection carrying a binary protocol
+    // rather than an actual shell, where feeding random binary through
+    // the terminal parser would just be noise (or worse). Applies
+    // regardless of type, same as keyboardProfile above.
+    enum class Viewer
+    {
+        Terminal,
+        Hex,
+    };
+    Viewer viewer = Viewer::Terminal;
+
     SerialPortSettings serial;
 
     QString telnetHost;

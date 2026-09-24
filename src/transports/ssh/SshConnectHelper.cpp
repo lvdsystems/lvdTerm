@@ -93,17 +93,83 @@ libssh2_socket_t connectSocket(const QString &host, quint16 port, QString *error
         return LIBSSH2_INVALID_SOCKET;
     }
 
+    // Non-blocking connect with an explicit, bounded timeout. A plain
+    // blocking ::connect() here can take the OS's own (long, and not
+    // configurable from here) TCP connect timeout to fail against an
+    // unreachable/firewalled host - and for the entire duration, this
+    // call (running on SshWorker's own thread) cannot process anything
+    // else, including a queued "stop" request. Found via a real crash:
+    // SshTransport::~SshTransport() gives its worker thread's stop
+    // request/QThread::quit() up to 3s via m_thread.wait(3000), then
+    // proceeds regardless - but Qt's own QThread destructor calls
+    // qFatal() ("Destroyed while thread is still running") if the thread
+    // is, in fact, still running, which is exactly what a stuck blocking
+    // connect() (reproduced by clicking Reconnect - or just closing the
+    // pane - while connecting to an unreachable host) caused. Bounding
+    // this call is the actual fix, not just a workaround for the
+    // destructor: it also means a genuinely unreachable host now fails
+    // with a real, reasonably prompt error instead of an indefinite-
+    // feeling hang.
+    u_long nonBlocking = 1;
+    ioctlsocket(sock, FIONBIO, &nonBlocking);
+
     // Qualified: a class using this helper is typically a QObject, whose
     // own connect() would otherwise shadow winsock's ::connect() here.
-    const int rc = ::connect(sock, result->ai_addr, static_cast<int>(result->ai_addrlen));
+    int rc = ::connect(sock, result->ai_addr, static_cast<int>(result->ai_addrlen));
     freeaddrinfo(result);
 
-    if (rc != 0) {
+    if (rc != 0 && WSAGetLastError() != WSAEWOULDBLOCK) {
         if (error)
             *error = QStringLiteral("Could not connect to %1:%2").arg(host).arg(port);
         closesocket(sock);
         return LIBSSH2_INVALID_SOCKET;
     }
+
+    if (rc != 0) {
+        // WSAEWOULDBLOCK is the expected outcome for a non-blocking
+        // socket - the connection is in progress. Wait for it to
+        // complete or fail, bounded this time.
+        fd_set writefds;
+        FD_ZERO(&writefds);
+        FD_SET(sock, &writefds);
+        fd_set exceptfds;
+        FD_ZERO(&exceptfds);
+        FD_SET(sock, &exceptfds);
+        timeval timeout{};
+        timeout.tv_sec = 10;
+
+        // The first argument is ignored on Windows (unlike POSIX
+        // select(), which needs the highest fd + 1) - winsock only looks
+        // at the fd_sets themselves.
+        const int selectResult = select(0, nullptr, &writefds, &exceptfds, &timeout);
+        if (selectResult <= 0 || FD_ISSET(sock, &exceptfds)) {
+            if (error) {
+                *error = selectResult == 0 ? QStringLiteral("Connection to %1:%2 timed out").arg(host).arg(port)
+                                            : QStringLiteral("Could not connect to %1:%2").arg(host).arg(port);
+            }
+            closesocket(sock);
+            return LIBSSH2_INVALID_SOCKET;
+        }
+    }
+
+    // Back to blocking mode - libssh2's own handshake code (called next,
+    // by the rest of SshWorker::start()) expects a blocking socket.
+    u_long blocking = 0;
+    ioctlsocket(sock, FIONBIO, &blocking);
+
+    // Defense in depth beyond the connect-specific timeout above: libssh2
+    // imposes no timeout of its own on blocking socket reads/writes, so a
+    // host that accepts the TCP connection but then never actually
+    // speaks SSH (a firewall/middlebox swallowing everything past the
+    // handshake, or a non-SSH service on that port) could hang the
+    // handshake/auth calls that follow exactly the same uninterruptible
+    // way the plain connect() call did - see the comment above. SO_RCVTIMEO/
+    // SO_SNDTIMEO bound every blocking socket call for the rest of this
+    // socket's life at the OS level, without needing to touch libssh2's
+    // own call sites individually.
+    DWORD socketTimeoutMs = 15000;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&socketTimeoutMs), sizeof(socketTimeoutMs));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&socketTimeoutMs), sizeof(socketTimeoutMs));
 
     return sock;
 }

@@ -10,6 +10,12 @@ these filenames so the links there resolve automatically:
 - `split-view.png` — a tab with a couple of split panes.
 - `settings.png` — the Settings dialog (theme/color scheme/font/keyboard
   profile).
+- `connection_editor.png` — the connection editor (New/Edit Connection),
+  ideally showing more than one Type so the shared vs. type-specific
+  fields are both visible.
+- `hexview.png` — a pane (or two, split) with the Hex viewer selected,
+  ideally showing the offset/hex/ASCII columns and the Group by (Byte/
+  Word/Dword) selector clearly.
 
 PNG, reasonably cropped to the window (no need to capture the full
 desktop) - see the root README for exactly where each one is used.

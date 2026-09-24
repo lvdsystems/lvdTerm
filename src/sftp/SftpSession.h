@@ -48,6 +48,9 @@ signals:
     void transferFinished(const QString &path, bool ok);
 
 private:
-    QThread m_thread;
+    // Heap-allocated (not a value member) and never QObject-parented so
+    // it can be handed off to ThreadReaper on teardown instead of
+    // blocking this destructor until it finishes - see ~SftpSession().
+    QThread *m_thread = nullptr;
     SftpClient *m_client = nullptr;
 };

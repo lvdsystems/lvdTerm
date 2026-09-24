@@ -5,6 +5,7 @@
 
 #include <QMetaType>
 #include <QObject>
+#include <QPointer>
 #include <QVector>
 
 #include "transports/ssh/SshConnectionSettings.h"
@@ -94,7 +95,11 @@ private:
     bool removeRecursively(const QString &path, QString *errorMessage);
 
     SshConnectionSettings m_settings;
-    QObject *m_hostKeyPromptTarget = nullptr;
+    // QPointer, not a raw QObject*: SftpSession can now be destroyed
+    // (see ~SftpSession()) while this client is still detached and
+    // running on its own thread, mid-connect - this must safely go null
+    // rather than dangle if that happens before the host-key prompt.
+    QPointer<QObject> m_hostKeyPromptTarget;
 
     libssh2_socket_t m_socket = LIBSSH2_INVALID_SOCKET;
     LIBSSH2_SESSION *m_session = nullptr;

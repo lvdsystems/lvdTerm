@@ -26,6 +26,16 @@ ConnectionProfile::Type typeFromString(const QString &s)
     return ConnectionProfile::Type::Serial;
 }
 
+QString viewerToString(ConnectionProfile::Viewer v)
+{
+    return v == ConnectionProfile::Viewer::Hex ? QStringLiteral("hex") : QStringLiteral("terminal");
+}
+
+ConnectionProfile::Viewer viewerFromString(const QString &s)
+{
+    return s == QStringLiteral("hex") ? ConnectionProfile::Viewer::Hex : ConnectionProfile::Viewer::Terminal;
+}
+
 QString authMethodToString(SshConnectionSettings::AuthMethod m)
 {
     return m == SshConnectionSettings::AuthMethod::PublicKey ? QStringLiteral("publickey") : QStringLiteral("password");
@@ -62,6 +72,10 @@ QJsonObject ConnectionProfile::toJson() const
     o[QStringLiteral("type")] = typeToString(type);
     o[QStringLiteral("autoReconnect")] = autoReconnect;
     o[QStringLiteral("keyboardProfile")] = keyboardProfile;
+    o[QStringLiteral("logSessionToFile")] = logSessionToFile;
+    o[QStringLiteral("logFilePath")] = logFilePath;
+    o[QStringLiteral("logIncludeTimestamps")] = logIncludeTimestamps;
+    o[QStringLiteral("viewer")] = viewerToString(viewer);
 
     switch (type) {
     case Type::Serial: {
@@ -111,6 +125,10 @@ ConnectionProfile ConnectionProfile::fromJson(const QJsonObject &object)
     p.type = typeFromString(object[QStringLiteral("type")].toString());
     p.autoReconnect = object[QStringLiteral("autoReconnect")].toBool(true);
     p.keyboardProfile = object[QStringLiteral("keyboardProfile")].toString();
+    p.logSessionToFile = object[QStringLiteral("logSessionToFile")].toBool(false);
+    p.logFilePath = object[QStringLiteral("logFilePath")].toString();
+    p.logIncludeTimestamps = object[QStringLiteral("logIncludeTimestamps")].toBool(false);
+    p.viewer = viewerFromString(object[QStringLiteral("viewer")].toString());
 
     switch (p.type) {
     case Type::Serial: {

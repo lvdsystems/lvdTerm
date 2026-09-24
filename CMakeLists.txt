@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 # NOTE: installer/lvdterm.iss has its own hardcoded AppVersion - not
 # auto-synced with this (the installer isn't part of the CMake build).
 # Bump both together.
-project(lvdterm VERSION 0.2 LANGUAGES CXX C) # C needed for vendored libssh2
+project(lvdterm VERSION 0.3 LANGUAGES CXX C) # C needed for vendored libssh2
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

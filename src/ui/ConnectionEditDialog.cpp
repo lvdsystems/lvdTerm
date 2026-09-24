@@ -3,9 +3,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QFileDialog>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -44,6 +47,11 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     , m_typeCombo(new QComboBox(this))
     , m_autoReconnectCheck(new QCheckBox(QStringLiteral("Reconnect automatically if the connection drops"), this))
     , m_keyboardProfileCombo(new QComboBox(this))
+    , m_viewerCombo(new QComboBox(this))
+    , m_logSessionCheck(new QCheckBox(QStringLiteral("Log session to file"), this))
+    , m_logFilePathEdit(new QLineEdit(this))
+    , m_logFileBrowseButton(new QPushButton(QStringLiteral("Browse..."), this))
+    , m_logTimestampCheck(new QCheckBox(QStringLiteral("Include timestamp for each line"), this))
     , m_typeStack(new QStackedWidget(this))
     , m_serialWidget(new SerialSettingsWidget(this))
     , m_telnetHostEdit(new QLineEdit(this))
@@ -68,6 +76,29 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     for (const QString &name : KeyboardProfiles::names())
         m_keyboardProfileCombo->addItem(prettyProfileName(name), name);
 
+    m_viewerCombo->addItem(QStringLiteral("Terminal"), static_cast<int>(ConnectionProfile::Viewer::Terminal));
+    m_viewerCombo->addItem(QStringLiteral("Hex"), static_cast<int>(ConnectionProfile::Viewer::Hex));
+
+    m_logFilePathEdit->setPlaceholderText(QStringLiteral("where to write the log file"));
+    connect(m_logFileBrowseButton, &QPushButton::clicked, this, &ConnectionEditDialog::browseLogFilePath);
+    // Timestamps only make sense while logging is actually enabled -
+    // greyed out (not hidden) so its own checked state stays visible/
+    // preserved even while logging is temporarily off.
+    auto updateLogFieldsEnabled = [this] {
+        const bool on = m_logSessionCheck->isChecked();
+        m_logFilePathEdit->setEnabled(on);
+        m_logFileBrowseButton->setEnabled(on);
+        m_logTimestampCheck->setEnabled(on);
+    };
+    connect(m_logSessionCheck, &QCheckBox::toggled, this, updateLogFieldsEnabled);
+    updateLogFieldsEnabled();
+
+    auto *logFileRow = new QWidget(this);
+    auto *logFileRowLayout = new QHBoxLayout(logFileRow);
+    logFileRowLayout->setContentsMargins(0, 0, 0, 0);
+    logFileRowLayout->addWidget(m_logFilePathEdit, 1);
+    logFileRowLayout->addWidget(m_logFileBrowseButton);
+
     auto *telnetPage = new QWidget(this);
     auto *telnetForm = new QFormLayout(telnetPage);
     telnetForm->setContentsMargins(0, 0, 0, 0);
@@ -91,6 +122,10 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     form->addRow(QStringLiteral("Type:"), m_typeCombo);
     form->addRow(QString(), m_autoReconnectCheck);
     form->addRow(QStringLiteral("Keyboard:"), m_keyboardProfileCombo);
+    form->addRow(QStringLiteral("Viewer:"), m_viewerCombo);
+    form->addRow(QString(), m_logSessionCheck);
+    form->addRow(QStringLiteral("Log file:"), logFileRow);
+    form->addRow(QString(), m_logTimestampCheck);
 
     auto *dpapiNote = new QLabel(
         QStringLiteral("Saved passwords/passphrases are encrypted with your Windows account (DPAPI). "
@@ -113,6 +148,13 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
 void ConnectionEditDialog::updateTypeStack()
 {
     m_typeStack->setCurrentIndex(m_typeCombo->currentIndex());
+}
+
+void ConnectionEditDialog::browseLogFilePath()
+{
+    const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Log Session To"), m_logFilePathEdit->text());
+    if (!path.isEmpty())
+        m_logFilePathEdit->setText(path);
 }
 
 ConnectionProfile::Type ConnectionEditDialog::indexToType(int index) const
@@ -149,6 +191,10 @@ void ConnectionEditDialog::setProfile(const ConnectionProfile &profile)
     m_folderEdit->setText(profile.folder);
     m_autoReconnectCheck->setChecked(profile.autoReconnect);
     m_keyboardProfileCombo->setCurrentIndex(qMax(0, m_keyboardProfileCombo->findData(profile.keyboardProfile)));
+    m_viewerCombo->setCurrentIndex(qMax(0, m_viewerCombo->findData(static_cast<int>(profile.viewer))));
+    m_logSessionCheck->setChecked(profile.logSessionToFile);
+    m_logFilePathEdit->setText(profile.logFilePath);
+    m_logTimestampCheck->setChecked(profile.logIncludeTimestamps);
 
     m_typeCombo->setCurrentIndex(typeToIndex(profile.type));
     updateTypeStack();
@@ -177,6 +223,10 @@ ConnectionProfile ConnectionEditDialog::profile() const
     p.type = indexToType(m_typeCombo->currentIndex());
     p.autoReconnect = m_autoReconnectCheck->isChecked();
     p.keyboardProfile = m_keyboardProfileCombo->currentData().toString();
+    p.viewer = static_cast<ConnectionProfile::Viewer>(m_viewerCombo->currentData().toInt());
+    p.logSessionToFile = m_logSessionCheck->isChecked();
+    p.logFilePath = m_logFilePathEdit->text().trimmed();
+    p.logIncludeTimestamps = m_logTimestampCheck->isChecked();
 
     switch (p.type) {
     case ConnectionProfile::Type::Serial:
