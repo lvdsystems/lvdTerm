@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+### Bugfix
+- SFTP upload could fail due to socket timeout handling
+
+
 ## 0.3
 
 ### New features
@@ -16,6 +22,9 @@
 ### Bugfix
 - improved auto-reconnect and reconnect
 - more robust async use of SSH workers
+- SFTP uploads/downloads could spuriously fail (reported as "...: OK")
+  on any transfer slower than 15s - a socket timeout meant to bound
+  connecting was being left on for the whole session
 
 
 

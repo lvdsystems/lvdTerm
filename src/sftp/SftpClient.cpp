@@ -87,6 +87,21 @@ void SftpClient::connectToHost()
         return;
     }
 
+    // connectSocket() leaves a bounded 15s SO_RCVTIMEO/SO_SNDTIMEO on the
+    // socket purely so the connect/handshake/auth sequence above can't
+    // hang forever - this class never switches its session to
+    // non-blocking (see the class comment), so every libssh2_sftp_write/
+    // read() call for the rest of this connection is a genuinely
+    // blocking send()/recv() on this same socket. Leaving that 15s bound
+    // in place would spuriously fail any transfer with a single chunk
+    // slower than that (a large file over a slow link, or just a normal
+    // stall) - a real bug, not a theoretical one, and the actual cause
+    // of a real "upload fails" report: the timeout aborts the transfer,
+    // and since it's a socket/session-level error rather than an SFTP
+    // protocol status, lastSftpError() (which only sees the latter) had
+    // nothing real to report and showed a bogus "OK" instead.
+    SshConnectHelper::clearSocketTimeouts(m_socket);
+
     m_sftp = libssh2_sftp_init(m_session);
     if (!m_sftp) {
         emit connectFailed(QStringLiteral("Could not start SFTP subsystem"));
@@ -112,7 +127,28 @@ void SftpClient::disconnectFromHost()
 
 QString SftpClient::lastSftpError() const
 {
-    return m_sftp ? sftpErrorString(libssh2_sftp_last_error(m_sftp)) : QStringLiteral("not connected");
+    if (!m_session)
+        return QStringLiteral("not connected");
+
+    // A negative return from an SFTP call means one of two different
+    // things, and only one of libssh2's two "last error" APIs reflects
+    // whichever actually happened: an explicit SFTP-protocol status from
+    // the server (libssh2_sftp_last_error() - e.g. permission denied, no
+    // such file), or a lower-level session/socket failure (libssh2_
+    // session_last_error() - e.g. a socket timeout, connection reset).
+    // Calling the SFTP-specific one unconditionally, as this used to,
+    // left it reporting whatever the last *successful* SFTP status
+    // happened to be (plain "OK") for any failure that wasn't actually
+    // an SFTP-protocol rejection - a real, misleading bug, not just a
+    // hypothetical one (see SftpClient::connectToHost()'s
+    // clearSocketTimeouts() call for the specific case that surfaced
+    // this).
+    if (libssh2_session_last_errno(m_session) == LIBSSH2_ERROR_SFTP_PROTOCOL && m_sftp)
+        return sftpErrorString(libssh2_sftp_last_error(m_sftp));
+
+    char *errmsg = nullptr;
+    libssh2_session_last_error(m_session, &errmsg, nullptr, 0);
+    return errmsg ? QString::fromUtf8(errmsg) : QStringLiteral("unknown error");
 }
 
 void SftpClient::listDirectory(const QString &path)
@@ -186,6 +222,7 @@ bool SftpClient::downloadFileInternal(const QString &remotePath, const QString &
     ssize_t n;
     while ((n = libssh2_sftp_read(handle, buffer, sizeof(buffer))) > 0) {
         if (localFile.write(buffer, n) != n) {
+            *errorMessage = QStringLiteral("Could not write local file: %1").arg(localFile.errorString());
             ok = false;
             break;
         }
@@ -251,6 +288,7 @@ bool SftpClient::uploadFileInternal(const QString &localPath, const QString &rem
     while (!localFile.atEnd()) {
         const qint64 n = localFile.read(buffer, sizeof(buffer));
         if (n < 0) {
+            *errorMessage = QStringLiteral("Could not read local file: %1").arg(localFile.errorString());
             ok = false;
             break;
         }
@@ -271,7 +309,12 @@ bool SftpClient::uploadFileInternal(const QString &localPath, const QString &rem
         emit transferProgress(remotePath, done, totalSize);
     }
 
-    if (!ok)
+    // Only ask libssh2 for the reason if nothing more specific was
+    // already recorded above - the local QFile::read() failure case sets
+    // its own message, and libssh2_sftp_last_error() would otherwise
+    // report whatever the last *successful* SFTP call left behind (a
+    // bogus "OK" - see the local-read branch above), not the real cause.
+    if (!ok && errorMessage->isEmpty())
         *errorMessage = lastSftpError();
 
     libssh2_sftp_close(handle);

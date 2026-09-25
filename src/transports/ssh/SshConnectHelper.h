@@ -44,4 +44,17 @@ bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket
 // support). Returns false on failure with *error set.
 bool authenticate(LIBSSH2_SESSION *session, const SshConnectionSettings &settings, QString *error);
 
+// connectSocket() leaves a bounded SO_RCVTIMEO/SO_SNDTIMEO on the socket
+// so the handshake/auth calls above can't hang forever on a host that
+// accepts the TCP connection but never actually speaks SSH (see its own
+// comments) - call this once connect+handshake+auth have all actually
+// succeeded, to lift that bound for the rest of the socket's life.
+// Without this, a normal blocking SFTP transfer (SftpClient never
+// switches its session to non-blocking, unlike the interactive terminal
+// - see SshWorker::start()) would spuriously fail with a socket timeout
+// on any single send()/recv() that takes longer than that bound, such as
+// one large chunk over a slow link - a real bug this fixes, not just a
+// theoretical one.
+void clearSocketTimeouts(libssh2_socket_t socket);
+
 } // namespace SshConnectHelper

@@ -3,7 +3,7 @@
 
 ; Kept in sync by hand with project(lvdterm VERSION ...) in the root
 ; CMakeLists.txt - this file isn't part of the CMake build, so bump both.
-#define AppVersion "0.3"
+#define AppVersion "0.3.1"
 
 [Setup]
 AppId={{6A9F6E63-6E7B-4B9A-9C0D-1B7E9B7F3E11}

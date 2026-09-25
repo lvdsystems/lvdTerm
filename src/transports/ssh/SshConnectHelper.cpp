@@ -174,6 +174,13 @@ libssh2_socket_t connectSocket(const QString &host, quint16 port, QString *error
     return sock;
 }
 
+void clearSocketTimeouts(libssh2_socket_t socket)
+{
+    DWORD noTimeout = 0;
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&noTimeout), sizeof(noTimeout));
+    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&noTimeout), sizeof(noTimeout));
+}
+
 bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket, const QString &host, quint16 port, QObject *promptTarget,
                                 QString *error)
 {

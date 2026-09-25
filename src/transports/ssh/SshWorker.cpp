@@ -63,6 +63,15 @@ void SshWorker::start()
 
     m_stage = Stage::Connected;
 
+    // See SftpClient::connectToHost() for why this matters there - here
+    // it's cheap defense in depth rather than a fix for an observed bug:
+    // switching to a non-blocking session below makes SO_RCVTIMEO/
+    // SO_SNDTIMEO moot for every socket call this class makes from this
+    // point on (non-blocking send()/recv() never wait long enough to hit
+    // them), but there's no reason to leave a stale 15s bound on the
+    // socket regardless.
+    SshConnectHelper::clearSocketTimeouts(m_socket);
+
     libssh2_session_set_blocking(m_session, 0);
 
     m_readNotifier = new QSocketNotifier(static_cast<qintptr>(m_socket), QSocketNotifier::Read, this);
