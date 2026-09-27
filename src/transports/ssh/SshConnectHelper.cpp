@@ -263,6 +263,13 @@ bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket
 
 bool authenticate(LIBSSH2_SESSION *session, const SshConnectionSettings &settings, QString *error)
 {
+    // settings.promptForUsername/promptForPassword are resolved into
+    // concrete values earlier, before this is ever called - see
+    // SshCredentialDialog::resolve() and its call sites - never here:
+    // this runs once per session (an interactive SSH pane and its paired
+    // SFTP-dock session are two *independent* connections to the same
+    // host), so resolving "ask each time" this deep would mean asking
+    // twice for the one thing the user typed once.
     const QByteArray user = settings.username.toUtf8();
 
     bool ok = false;

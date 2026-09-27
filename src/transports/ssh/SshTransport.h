@@ -31,6 +31,15 @@ public:
     // being invoked from the worker thread.
     Q_INVOKABLE bool confirmHostKey(const QString &message);
 
+    // Same blocking-queued-call contract as confirmHostKey() above -
+    // called by SshWorker::start()'s retry loop when a password auth
+    // attempt is rejected, so the user can try a different password
+    // without having to close and reopen the pane. Not used for the
+    // "ask each time" case (see SshCredentialDialog, resolved once
+    // up front, before this transport even exists) - this is purely a
+    // post-failure retry.
+    Q_INVOKABLE SshCredentialPrompt promptForPassword(const QString &host, const QString &username);
+
 public slots:
     void write(const QByteArray &data) override;
 

@@ -65,7 +65,7 @@ private:
     std::optional<NewConnectionResult> runSerialDialog();
     std::optional<NewConnectionResult> runTelnetDialog();
     std::optional<NewConnectionResult> runSshDialog();
-    NewConnectionResult resultForProfile(const ConnectionProfile &profile);
+    std::optional<NewConnectionResult> resultForProfile(const ConnectionProfile &profile);
 
     void addTerminalTab(const NewConnectionResult &result);
     TerminalView *makeView(const NewConnectionResult &result);

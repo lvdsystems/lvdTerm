@@ -1,5 +1,6 @@
 #include "SshSettingsWidget.h"
 
+#include <QCheckBox>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -15,16 +16,33 @@ SshSettingsWidget::SshSettingsWidget(QWidget *parent)
     , m_hostEdit(new QLineEdit(this))
     , m_portSpin(new QSpinBox(this))
     , m_usernameEdit(new QLineEdit(this))
+    , m_promptUsernameCheck(new QCheckBox(QStringLiteral("Ask each time"), this))
     , m_passwordRadio(new QRadioButton(QStringLiteral("Password"), this))
     , m_keyRadio(new QRadioButton(QStringLiteral("Private key"), this))
     , m_authStack(new QStackedWidget(this))
     , m_passwordEdit(new QLineEdit(this))
+    , m_promptPasswordCheck(new QCheckBox(QStringLiteral("Ask each time"), this))
     , m_keyPathEdit(new QLineEdit(this))
     , m_passphraseEdit(new QLineEdit(this))
 {
     m_hostEdit->setPlaceholderText(QStringLiteral("hostname or IP address"));
     m_portSpin->setRange(1, 65535);
     m_portSpin->setValue(22);
+
+    // Deliberately independent of just leaving the field blank: a blank
+    // *saved* password is still a real, distinct choice (some servers
+    // genuinely allow it) from "don't save one, ask me at connect time" -
+    // collapsing the two meant there was no way to express the former,
+    // and a connection with neither ended up silently trying a blank
+    // password and failing as if it were simply wrong.
+    connect(m_promptUsernameCheck, &QCheckBox::toggled, m_usernameEdit, &QLineEdit::setDisabled);
+    connect(m_promptPasswordCheck, &QCheckBox::toggled, m_passwordEdit, &QLineEdit::setDisabled);
+
+    auto *usernameRow = new QWidget(this);
+    auto *usernameLayout = new QHBoxLayout(usernameRow);
+    usernameLayout->setContentsMargins(0, 0, 0, 0);
+    usernameLayout->addWidget(m_usernameEdit, 1);
+    usernameLayout->addWidget(m_promptUsernameCheck);
 
     m_passwordRadio->setChecked(true);
     connect(m_passwordRadio, &QRadioButton::toggled, this, &SshSettingsWidget::updateAuthStack);
@@ -38,10 +56,16 @@ SshSettingsWidget::SshSettingsWidget(QWidget *parent)
 
     m_passwordEdit->setEchoMode(QLineEdit::Password);
 
+    auto *passwordRow = new QWidget(this);
+    auto *passwordRowLayout = new QHBoxLayout(passwordRow);
+    passwordRowLayout->setContentsMargins(0, 0, 0, 0);
+    passwordRowLayout->addWidget(m_passwordEdit, 1);
+    passwordRowLayout->addWidget(m_promptPasswordCheck);
+
     auto *passwordPage = new QWidget(this);
     auto *passwordForm = new QFormLayout(passwordPage);
     passwordForm->setContentsMargins(0, 0, 0, 0);
-    passwordForm->addRow(QStringLiteral("Password:"), m_passwordEdit);
+    passwordForm->addRow(QStringLiteral("Password:"), passwordRow);
 
     m_keyPathEdit->setPlaceholderText(QStringLiteral("path to private key file"));
     auto *browseButton = new QPushButton(QStringLiteral("Browse..."), this);
@@ -68,7 +92,7 @@ SshSettingsWidget::SshSettingsWidget(QWidget *parent)
     form->setContentsMargins(0, 0, 0, 0);
     form->addRow(QStringLiteral("Host:"), m_hostEdit);
     form->addRow(QStringLiteral("Port:"), m_portSpin);
-    form->addRow(QStringLiteral("Username:"), m_usernameEdit);
+    form->addRow(QStringLiteral("Username:"), usernameRow);
     form->addRow(QStringLiteral("Authenticate with:"), authMethodRow);
     form->addRow(m_authStack);
 
@@ -94,6 +118,7 @@ SshConnectionSettings SshSettingsWidget::settings() const
     s.host = m_hostEdit->text().trimmed();
     s.port = static_cast<quint16>(m_portSpin->value());
     s.username = m_usernameEdit->text().trimmed();
+    s.promptForUsername = m_promptUsernameCheck->isChecked();
 
     if (m_keyRadio->isChecked()) {
         s.authMethod = SshConnectionSettings::AuthMethod::PublicKey;
@@ -102,6 +127,7 @@ SshConnectionSettings SshSettingsWidget::settings() const
     } else {
         s.authMethod = SshConnectionSettings::AuthMethod::Password;
         s.password = m_passwordEdit->text();
+        s.promptForPassword = m_promptPasswordCheck->isChecked();
     }
 
     return s;
@@ -112,6 +138,7 @@ void SshSettingsWidget::setSettings(const SshConnectionSettings &settings)
     m_hostEdit->setText(settings.host);
     m_portSpin->setValue(settings.port);
     m_usernameEdit->setText(settings.username);
+    m_promptUsernameCheck->setChecked(settings.promptForUsername);
 
     if (settings.authMethod == SshConnectionSettings::AuthMethod::PublicKey) {
         m_keyRadio->setChecked(true);
@@ -120,6 +147,7 @@ void SshSettingsWidget::setSettings(const SshConnectionSettings &settings)
     } else {
         m_passwordRadio->setChecked(true);
         m_passwordEdit->setText(settings.password);
+        m_promptPasswordCheck->setChecked(settings.promptForPassword);
     }
     updateAuthStack();
 }

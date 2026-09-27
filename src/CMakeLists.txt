@@ -84,6 +84,8 @@ add_executable(lvdterm WIN32
     resources/app.rc
     ui/SshConnectDialog.cpp
     ui/SshConnectDialog.h
+    ui/SshCredentialDialog.cpp
+    ui/SshCredentialDialog.h
     ui/SshSettingsWidget.cpp
     ui/SshSettingsWidget.h
     ui/TelnetConnectDialog.cpp

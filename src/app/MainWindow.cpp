@@ -31,6 +31,7 @@
 #include "ui/SftpDock.h"
 #include "ui/SplitPicker.h"
 #include "ui/SshConnectDialog.h"
+#include "ui/SshCredentialDialog.h"
 #include "ui/TelnetConnectDialog.h"
 #include "ui/WelcomeWidget.h"
 
@@ -280,8 +281,16 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::runSshDialog()
     if (dialog.exec() != QDialog::Accepted)
         return std::nullopt;
 
-    const SshConnectionSettings settings = dialog.settings();
-    if (settings.host.isEmpty() || settings.username.isEmpty())
+    SshConnectionSettings settings = dialog.settings();
+    if (settings.host.isEmpty() || (settings.username.isEmpty() && !settings.promptForUsername))
+        return std::nullopt;
+
+    // Resolve "ask each time" once, here, before anything is built from
+    // settings - the interactive pane (SshTransport, below) and the SFTP
+    // dock's own independent connection to the same host (SftpSession,
+    // built later from result.sshSettings) must not each separately
+    // prompt for the one thing the user is about to type once.
+    if (!SshCredentialDialog::resolve(settings))
         return std::nullopt;
 
     const QString title = QStringLiteral("%1@%2").arg(settings.username, settings.host);
@@ -297,7 +306,7 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::runSshDialog()
     return result;
 }
 
-MainWindow::NewConnectionResult MainWindow::resultForProfile(const ConnectionProfile &profile)
+std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(const ConnectionProfile &profile)
 {
     switch (profile.type) {
     case ConnectionProfile::Type::Serial: {
@@ -320,7 +329,14 @@ MainWindow::NewConnectionResult MainWindow::resultForProfile(const ConnectionPro
         return result;
     }
     case ConnectionProfile::Type::Ssh: {
-        const SshConnectionSettings s = profile.ssh;
+        SshConnectionSettings s = profile.ssh;
+        // Resolve "ask each time" once, here, before anything is built
+        // from s - see the identical comment in runSshDialog(). Applies
+        // to every saved-profile connect path (open from the tree,
+        // split-picker choice, session restore on launch), not just the
+        // ad hoc quick-connect dialog.
+        if (!SshCredentialDialog::resolve(s))
+            return std::nullopt;
         NewConnectionResult result{new SshTransport(s), profile.name, [s] { return new SshTransport(s); }, profile.autoReconnect};
         result.sshSettings = s;
         result.snapshot = profile;
@@ -350,7 +366,8 @@ void MainWindow::newSshConnection()
 
 void MainWindow::openProfile(const ConnectionProfile &profile)
 {
-    addTerminalTab(resultForProfile(profile));
+    if (auto result = resultForProfile(profile))
+        addTerminalTab(*result);
 }
 
 TerminalView *MainWindow::makeView(const NewConnectionResult &result)
@@ -484,7 +501,8 @@ void MainWindow::splitActivePane(Qt::Orientation orientation)
                                                     existing->sessionSnapshot()});
     });
     connect(picker, &SplitPicker::profileChosen, this, [this, splitter, picker](const ConnectionProfile &profile) {
-        finishSplitWithResult(splitter, picker, resultForProfile(profile));
+        if (auto result = resultForProfile(profile))
+            finishSplitWithResult(splitter, picker, *result);
     });
     connect(picker, &SplitPicker::newSerialRequested, this, [this, splitter, picker] {
         if (auto result = runSerialDialog())
@@ -724,7 +742,8 @@ QWidget *MainWindow::buildNode(const SessionNode &node)
     if (node.kind == SessionNode::Kind::Leaf) {
         if (!node.connection)
             return nullptr;
-        return makeView(resultForProfile(*node.connection));
+        auto result = resultForProfile(*node.connection);
+        return result ? makeView(*result) : nullptr;
     }
 
     auto *splitter = new QSplitter(node.orientation);

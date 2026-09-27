@@ -68,6 +68,7 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     m_typeCombo->addItem(QStringLiteral("Serial"));
     m_typeCombo->addItem(QStringLiteral("Telnet"));
     m_typeCombo->addItem(QStringLiteral("SSH"));
+    m_typeCombo->setCurrentIndex(kSshIndex); // most new connections are SSH; setProfile() overrides this when editing an existing one
     connect(m_typeCombo, &QComboBox::currentIndexChanged, this, &ConnectionEditDialog::updateTypeStack);
 
     m_autoReconnectCheck->setChecked(true);
@@ -116,16 +117,23 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    auto *form = new QFormLayout();
-    form->addRow(QStringLiteral("Name:"), m_nameEdit);
-    form->addRow(QStringLiteral("Folder:"), m_folderEdit);
-    form->addRow(QStringLiteral("Type:"), m_typeCombo);
-    form->addRow(QString(), m_autoReconnectCheck);
-    form->addRow(QStringLiteral("Keyboard:"), m_keyboardProfileCombo);
-    form->addRow(QStringLiteral("Viewer:"), m_viewerCombo);
-    form->addRow(QString(), m_logSessionCheck);
-    form->addRow(QStringLiteral("Log file:"), logFileRow);
-    form->addRow(QString(), m_logTimestampCheck);
+    // Name/Folder/Type, then immediately the type-specific fields
+    // (host/port/username/authentication, via m_typeStack) - what a
+    // connection actually connects *to* belongs right after choosing its
+    // type, not after a run of secondary preferences (auto-reconnect,
+    // keyboard, viewer, logging) that apply regardless of type.
+    auto *topForm = new QFormLayout();
+    topForm->addRow(QStringLiteral("Name:"), m_nameEdit);
+    topForm->addRow(QStringLiteral("Folder:"), m_folderEdit);
+    topForm->addRow(QStringLiteral("Type:"), m_typeCombo);
+
+    auto *bottomForm = new QFormLayout();
+    bottomForm->addRow(QString(), m_autoReconnectCheck);
+    bottomForm->addRow(QStringLiteral("Keyboard:"), m_keyboardProfileCombo);
+    bottomForm->addRow(QStringLiteral("Viewer:"), m_viewerCombo);
+    bottomForm->addRow(QString(), m_logSessionCheck);
+    bottomForm->addRow(QStringLiteral("Log file:"), logFileRow);
+    bottomForm->addRow(QString(), m_logTimestampCheck);
 
     auto *dpapiNote = new QLabel(
         QStringLiteral("Saved passwords/passphrases are encrypted with your Windows account (DPAPI). "
@@ -136,8 +144,9 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     dpapiNote->setStyleSheet(QStringLiteral("color: palette(mid);"));
 
     auto *layout = new QVBoxLayout(this);
-    layout->addLayout(form);
+    layout->addLayout(topForm);
     layout->addWidget(m_typeStack);
+    layout->addLayout(bottomForm);
     layout->addWidget(dpapiNote);
     layout->addWidget(buttons);
 

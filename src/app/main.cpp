@@ -11,6 +11,7 @@
 #include "core/AppSettings.h"
 #include "core/ThreadReaper.h"
 #include "terminal/KeyboardProfiles.h"
+#include "transports/ssh/SshConnectionSettings.h"
 
 int main(int argc, char *argv[])
 {
@@ -23,6 +24,12 @@ int main(int argc, char *argv[])
 
     Theme::apply(AppSettings::instance().theme());
     KeyboardProfiles::registerAll(); // before any TerminalSession exists - see KeyboardProfiles.h
+
+    // Needed for SshTransport::promptForPassword's SshCredentialPrompt
+    // return value to cross the worker-thread -> GUI-thread blocking
+    // queued call (see SshWorker::start()'s retry-on-rejected-password
+    // loop) - before any SSH connection can possibly be started.
+    qRegisterMetaType<SshCredentialPrompt>("SshCredentialPrompt");
 
     if (libssh2_init(0) != 0)
         qWarning("libssh2_init() failed; SSH connections will not work");

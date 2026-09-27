@@ -102,9 +102,11 @@ QJsonObject ConnectionProfile::toJson() const
         s[QStringLiteral("host")] = ssh.host;
         s[QStringLiteral("port")] = ssh.port;
         s[QStringLiteral("username")] = ssh.username;
+        s[QStringLiteral("promptForUsername")] = ssh.promptForUsername;
         s[QStringLiteral("authMethod")] = authMethodToString(ssh.authMethod);
         s[QStringLiteral("privateKeyPath")] = ssh.privateKeyPath;
         s[QStringLiteral("passwordProtected")] = protectToBase64(ssh.password);
+        s[QStringLiteral("promptForPassword")] = ssh.promptForPassword;
         s[QStringLiteral("passphraseProtected")] = protectToBase64(ssh.passphrase);
         o[QStringLiteral("ssh")] = s;
         break;
@@ -153,9 +155,11 @@ ConnectionProfile ConnectionProfile::fromJson(const QJsonObject &object)
         p.ssh.host = s[QStringLiteral("host")].toString();
         p.ssh.port = static_cast<quint16>(s[QStringLiteral("port")].toInt(22));
         p.ssh.username = s[QStringLiteral("username")].toString();
+        p.ssh.promptForUsername = s[QStringLiteral("promptForUsername")].toBool(false);
         p.ssh.authMethod = authMethodFromString(s[QStringLiteral("authMethod")].toString());
         p.ssh.privateKeyPath = s[QStringLiteral("privateKeyPath")].toString();
         p.ssh.password = unprotectFromBase64(s[QStringLiteral("passwordProtected")].toString());
+        p.ssh.promptForPassword = s[QStringLiteral("promptForPassword")].toBool(false);
         p.ssh.passphrase = unprotectFromBase64(s[QStringLiteral("passphraseProtected")].toString());
         break;
     }

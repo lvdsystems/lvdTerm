@@ -42,6 +42,11 @@ bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket
 // back to a password-style keyboard-interactive prompt if that's what
 // the server actually wants and a password is available (no 2FA/OTP
 // support). Returns false on failure with *error set.
+//
+// settings.username/password must already be resolved by this point -
+// see SshCredentialDialog::resolve(), called once per connection attempt
+// before either an SshTransport or SftpSession (let alone this function)
+// ever exists.
 bool authenticate(LIBSSH2_SESSION *session, const SshConnectionSettings &settings, QString *error);
 
 // connectSocket() leaves a bounded SO_RCVTIMEO/SO_SNDTIMEO on the socket

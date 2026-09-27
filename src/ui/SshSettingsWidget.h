@@ -4,6 +4,7 @@
 
 #include "transports/ssh/SshConnectionSettings.h"
 
+class QCheckBox;
 class QLineEdit;
 class QSpinBox;
 class QRadioButton;
@@ -28,12 +29,14 @@ private:
     QLineEdit *m_hostEdit = nullptr;
     QSpinBox *m_portSpin = nullptr;
     QLineEdit *m_usernameEdit = nullptr;
+    QCheckBox *m_promptUsernameCheck = nullptr;
 
     QRadioButton *m_passwordRadio = nullptr;
     QRadioButton *m_keyRadio = nullptr;
     QStackedWidget *m_authStack = nullptr;
 
     QLineEdit *m_passwordEdit = nullptr;
+    QCheckBox *m_promptPasswordCheck = nullptr;
     QLineEdit *m_keyPathEdit = nullptr;
     QLineEdit *m_passphraseEdit = nullptr;
 };

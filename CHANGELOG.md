@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+### New Features
+- SSH wrong password: in case of wrong password inserted popups to ask it again
+- Connection dialog polish
+
+### Bugfix
+- Allow not to specify any password for SSH
+
 ## 0.3.1
 
 ### Bugfix

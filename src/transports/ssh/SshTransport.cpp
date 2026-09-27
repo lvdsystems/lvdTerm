@@ -1,5 +1,7 @@
 #include "SshTransport.h"
 
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 
 #include "SshWorker.h"
@@ -64,4 +66,13 @@ bool SshTransport::confirmHostKey(const QString &message)
 {
     return QMessageBox::warning(nullptr, QStringLiteral("SSH Host Key"), message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
         == QMessageBox::Yes;
+}
+
+SshCredentialPrompt SshTransport::promptForPassword(const QString &host, const QString &username)
+{
+    SshCredentialPrompt result;
+    result.value = QInputDialog::getText(nullptr, QStringLiteral("SSH Authentication Failed"),
+                                          QStringLiteral("Wrong password. Password for %1@%2:").arg(username, host), QLineEdit::Password,
+                                          QString(), &result.accepted);
+    return result;
 }

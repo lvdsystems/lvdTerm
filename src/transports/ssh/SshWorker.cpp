@@ -47,11 +47,34 @@ void SshWorker::start()
         return;
     }
 
-    if (!SshConnectHelper::authenticate(m_session, m_settings, &error)) {
-        emit errorOccurred(error);
-        teardown();
-        emit disconnected();
-        return;
+    // A rejected password is retried in place rather than just failing
+    // outright - the user can fix a mistyped password without having to
+    // close and reopen the pane. Bounded (matches OpenSSH's own default
+    // of 3 total password attempts) since each retry needs a real,
+    // human-entered answer - not something that could spin on its own.
+    // Only for AuthMethod::Password: retrying with a different password
+    // makes no sense for PublicKey auth, and a rejected key is something
+    // to fix in the connection's settings, not paper over live.
+    constexpr int kMaxPasswordAttempts = 3;
+    for (int attempt = 1; !SshConnectHelper::authenticate(m_session, m_settings, &error); ++attempt) {
+        const bool canRetry = m_settings.authMethod == SshConnectionSettings::AuthMethod::Password && attempt < kMaxPasswordAttempts && m_transport;
+        if (!canRetry) {
+            emit errorOccurred(error);
+            teardown();
+            emit disconnected();
+            return;
+        }
+
+        SshCredentialPrompt result;
+        QMetaObject::invokeMethod(m_transport, "promptForPassword", Qt::BlockingQueuedConnection, Q_RETURN_ARG(SshCredentialPrompt, result),
+                                   Q_ARG(QString, m_settings.host), Q_ARG(QString, m_settings.username));
+        if (!result.accepted) {
+            emit errorOccurred(QStringLiteral("Cancelled"));
+            teardown();
+            emit disconnected();
+            return;
+        }
+        m_settings.password = result.value;
     }
 
     if (!openShellChannel()) {
