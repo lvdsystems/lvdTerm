@@ -1,7 +1,15 @@
 #include "SshConnectHelper.h"
 
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 #include <QDir>
 #include <QMetaObject>
@@ -61,6 +69,8 @@ QString knownHostsPath()
     QDir().mkpath(dir);
     return dir + QStringLiteral("/known_hosts");
 }
+
+#ifdef _WIN32
 
 libssh2_socket_t connectSocket(const QString &host, quint16 port, QString *error)
 {
@@ -180,6 +190,112 @@ void clearSocketTimeouts(libssh2_socket_t socket)
     setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&noTimeout), sizeof(noTimeout));
     setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&noTimeout), sizeof(noTimeout));
 }
+
+void closeSocketAndCleanup(libssh2_socket_t socket)
+{
+    if (socket != LIBSSH2_INVALID_SOCKET)
+        closesocket(socket);
+    WSACleanup();
+}
+
+#else // POSIX (Linux)
+
+libssh2_socket_t connectSocket(const QString &host, quint16 port, QString *error)
+{
+    // No WSAStartup/WSACleanup equivalent needed - POSIX sockets have no
+    // per-process init/refcounting step.
+    const libssh2_socket_t sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == LIBSSH2_INVALID_SOCKET) {
+        if (error)
+            *error = QStringLiteral("Could not create socket");
+        return LIBSSH2_INVALID_SOCKET;
+    }
+
+    struct addrinfo hints = {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    struct addrinfo *result = nullptr;
+    const QByteArray hostUtf8 = host.toUtf8();
+    const QByteArray portUtf8 = QByteArray::number(port);
+    if (getaddrinfo(hostUtf8.constData(), portUtf8.constData(), &hints, &result) != 0 || !result) {
+        if (error)
+            *error = QStringLiteral("Could not resolve host: %1").arg(host);
+        close(sock);
+        return LIBSSH2_INVALID_SOCKET;
+    }
+
+    // Non-blocking connect with an explicit, bounded timeout - see the
+    // Windows branch above for the full story (a real crash this fixes).
+    // O_NONBLOCK is read-modify-write on POSIX, not a single ioctl call.
+    const int flags = fcntl(sock, F_GETFL, 0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+    int rc = ::connect(sock, result->ai_addr, result->ai_addrlen);
+    freeaddrinfo(result);
+
+    // EINPROGRESS, not EWOULDBLOCK: POSIX's non-blocking-connect-in-
+    // progress errno differs from Windows's WSAEWOULDBLOCK.
+    if (rc != 0 && errno != EINPROGRESS) {
+        if (error)
+            *error = QStringLiteral("Could not connect to %1:%2").arg(host).arg(port);
+        close(sock);
+        return LIBSSH2_INVALID_SOCKET;
+    }
+
+    if (rc != 0) {
+        fd_set writefds;
+        FD_ZERO(&writefds);
+        FD_SET(sock, &writefds);
+        fd_set exceptfds;
+        FD_ZERO(&exceptfds);
+        FD_SET(sock, &exceptfds);
+        timeval timeout{};
+        timeout.tv_sec = 10;
+
+        // Unlike winsock, POSIX select() actually uses its first
+        // argument (highest fd + 1) - passing 0 here would silently
+        // watch no descriptors at all.
+        const int selectResult = select(sock + 1, nullptr, &writefds, &exceptfds, &timeout);
+        if (selectResult <= 0 || FD_ISSET(sock, &exceptfds)) {
+            if (error) {
+                *error = selectResult == 0 ? QStringLiteral("Connection to %1:%2 timed out").arg(host).arg(port)
+                                            : QStringLiteral("Could not connect to %1:%2").arg(host).arg(port);
+            }
+            close(sock);
+            return LIBSSH2_INVALID_SOCKET;
+        }
+    }
+
+    // Back to blocking mode - libssh2's own handshake code expects it.
+    fcntl(sock, F_SETFL, flags & ~O_NONBLOCK);
+
+    // Defense in depth beyond the connect-specific timeout above - see
+    // the Windows branch's comment. SO_RCVTIMEO/SO_SNDTIMEO take a
+    // struct timeval on POSIX, not a flat milliseconds DWORD.
+    timeval socketTimeout{};
+    socketTimeout.tv_sec = 15;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &socketTimeout, sizeof(socketTimeout));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &socketTimeout, sizeof(socketTimeout));
+
+    return sock;
+}
+
+void clearSocketTimeouts(libssh2_socket_t socket)
+{
+    timeval noTimeout{};
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &noTimeout, sizeof(noTimeout));
+    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &noTimeout, sizeof(noTimeout));
+}
+
+void closeSocketAndCleanup(libssh2_socket_t socket)
+{
+    if (socket != LIBSSH2_INVALID_SOCKET)
+        close(socket);
+}
+
+#endif
 
 bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket, const QString &host, quint16 port, QObject *promptTarget,
                                 QString *error)

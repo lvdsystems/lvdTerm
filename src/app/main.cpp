@@ -1,5 +1,9 @@
 #include <libssh2.h>
 
+#ifndef _WIN32
+#include <csignal>
+#endif
+
 #include <QApplication>
 #include <QDebug>
 #include <QIcon>
@@ -15,6 +19,15 @@
 
 int main(int argc, char *argv[])
 {
+#ifndef _WIN32
+    // A write to a socket whose peer reset the connection raises SIGPIPE
+    // on Linux, which kills the process by default - no Windows analog,
+    // and not just lvdterm's own send() calls: libssh2's internal socket
+    // I/O goes through the same fd, so a dropped SSH connection mid-
+    // transfer could otherwise take the whole app down with it.
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     QApplication app(argc, argv);
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QApplication::setApplicationName(QStringLiteral("lvdterm"));

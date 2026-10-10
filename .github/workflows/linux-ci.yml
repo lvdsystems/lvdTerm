@@ -1,0 +1,74 @@
+name: Linux CI
+
+# Windows isn't covered here - that build is still verified locally
+# (llvm-mingw toolchain, not something practical to set up on a GitHub-
+# hosted runner). This workflow exists specifically as the automated
+# regression guard the Linux port didn't have yet: it builds with the
+# same `linux-release` CMake preset a contributor would use locally (see
+# the README's "Building from source" Linux section), packages it with
+# CPack exactly like a real release would, and does a real (if headless)
+# launch smoke test - not just "did it configure".
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build build-essential pkg-config \
+            qt6-base-dev qt6-serialport-dev libssl-dev libsecret-1-dev \
+            xvfb
+
+      - name: Configure (linux-release preset)
+        run: cmake --preset linux-release
+
+      - name: Build
+        run: cmake --build --preset linux-release
+
+      - name: Package (.deb via CPack)
+        run: |
+          cd build/linux-release
+          cpack
+          ls -la lvdterm-*-Linux.deb
+
+      - name: Install and verify the packaged .deb
+        run: |
+          sudo dpkg -i build/linux-release/lvdterm-*-Linux.deb
+          command -v lvdterm
+          test -f /usr/share/applications/lvdterm.desktop
+          test -f /usr/share/icons/hicolor/scalable/apps/lvdterm.svg
+
+      - name: Launch smoke test (headless, via Xvfb)
+        # Checks by process name (pgrep), not a captured $!/kill -0 pair -
+        # verified by hand that the latter is unreliable here (a false
+        # "crashed" reading while the backgrounded process, one more
+        # shell layer down inside xvfb-run's own wrapper, was actually
+        # still running fine).
+        run: |
+          xvfb-run -a bash -c '
+            lvdterm > /tmp/lvdterm.log 2>&1 &
+            sleep 3
+            if pgrep -x lvdterm > /dev/null; then
+              echo "lvdterm is still running after 3s - launch smoke test passed"
+              pkill -x lvdterm
+            else
+              echo "lvdterm exited/crashed within 3s of launch"
+              cat /tmp/lvdterm.log
+              exit 1
+            fi
+          '
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lvdterm-linux-deb
+          path: build/linux-release/lvdterm-*-Linux.deb

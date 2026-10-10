@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-#include <winsock2.h>
-
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -569,9 +567,6 @@ void SftpClient::teardown()
         libssh2_session_free(m_session);
         m_session = nullptr;
     }
-    if (m_socket != LIBSSH2_INVALID_SOCKET) {
-        closesocket(m_socket);
-        m_socket = LIBSSH2_INVALID_SOCKET;
-        WSACleanup();
-    }
+    SshConnectHelper::closeSocketAndCleanup(m_socket);
+    m_socket = LIBSSH2_INVALID_SOCKET;
 }

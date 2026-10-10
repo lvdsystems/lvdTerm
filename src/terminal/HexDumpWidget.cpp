@@ -2,6 +2,7 @@
 
 #include <QComboBox>
 #include <QFont>
+#include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -45,7 +46,11 @@ HexDumpWidget::HexDumpWidget(QWidget *parent) : QWidget(parent), m_textEdit(new 
     m_textEdit->setReadOnly(true);
     m_textEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_textEdit->setUndoRedoEnabled(false); // never edited by the user - no undo history to keep
+#ifdef _WIN32
     QFont monoFont(QStringLiteral("Consolas"));
+#else
+    QFont monoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+#endif
     monoFont.setStyleHint(QFont::Monospace);
     m_textEdit->setFont(monoFont);
 

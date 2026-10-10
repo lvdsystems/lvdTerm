@@ -154,6 +154,54 @@ Inno Setup script above.
 A `llvm-mingw` (Debug) preset is also defined, building to
 `build/llvm-mingw/dist/`.
 
+**Linux (experimental)**
+
+lvdterm also builds and runs on Linux, using the `linux`/`linux-release`
+presets - no hardcoded paths to edit, since these just rely on your
+distro's own Qt 6 packages:
+
+```sh
+# Debian/Ubuntu - adjust for your distro's package names
+sudo apt install qt6-base-dev qt6-serialport-dev libssl-dev libsecret-1-dev cmake ninja-build
+cmake --preset linux-release
+cmake --build --preset linux-release
+```
+
+This produces `build/linux-release/dist/lvdterm`. Two packaged formats
+are available, both documented in detail (including the exact commands)
+in [TODO.md](TODO.md):
+
+- A `.deb` - `cd build/linux-release && cpack` produces
+  `lvdterm-<version>-Linux.deb`, installing to `/usr/bin/lvdterm` with
+  proper desktop/launcher integration (reusing
+  [`packaging/linux/lvdterm.desktop`](packaging/linux/lvdterm.desktop))
+  and auto-detected runtime dependencies against your distro's own
+  packages.
+- An AppImage - a single, self-contained, distro-agnostic executable
+  (bundles its own Qt/OpenSSL/libsecret, no matching distro packages
+  needed), built with `linuxdeploy`/`linuxdeploy-plugin-qt`, the closest
+  Linux equivalent to the Windows portable zip. **Build it on an old
+  distro, not a new one** - glibc compatibility is forward-only, so an
+  AppImage built on a bleeding-edge system won't run on an older one no
+  matter what it bundles. See
+  [`packaging/linux/README.md`](packaging/linux/README.md) for the exact
+  recipe (Ubuntu 20.04 + Qt's own official binaries via `aqtinstall`,
+  verified against a real older target).
+
+For manual desktop integration when building without either of those,
+see [`packaging/linux/README.md`](packaging/linux/README.md).
+Saved passwords/passphrases are encrypted via a libsecret-stored key
+(GNOME Keyring/KWallet) instead of Windows DPAPI - see
+[`src/core/Crypto.cpp`](src/core/Crypto.cpp) for the full design and why.
+This Linux build is newer and less battle-tested than the Windows one;
+please open an issue for anything that doesn't work.
+
+**Note if building/packaging under WSL**: do it from WSL's own native
+filesystem (e.g. `~/`), not a Windows-mounted drive (`/mnt/c/`, `/mnt/d/`,
+etc.) - DrvFs can't store real Unix permission bits, so a `.deb` built
+from a Windows-mounted path will have every file reported as
+world-writable.
+
 ## Third-party components
 
 lvdterm vendors a stripped-down, Windows-ported copy of

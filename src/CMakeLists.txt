@@ -81,7 +81,6 @@ add_executable(lvdterm WIN32
     resources/license.qrc
     resources/branding.qrc
     resources/icons.qrc
-    resources/app.rc
     ui/SshConnectDialog.cpp
     ui/SshConnectDialog.h
     ui/SshCredentialDialog.cpp
@@ -91,6 +90,14 @@ add_executable(lvdterm WIN32
     ui/TelnetConnectDialog.cpp
     ui/TelnetConnectDialog.h
 )
+
+# resources/app.rc (embeds the .ico so the exe itself carries the
+# taskbar/Explorer icon) is a Windows resource-compiler file - CMAKE_RC_
+# COMPILER machinery doesn't exist on Linux, and listing it unconditionally
+# would hard-fail a Linux Ninja build rather than silently skip it.
+if(WIN32)
+    target_sources(lvdterm PRIVATE resources/app.rc)
+endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/Version.h @ONLY)
 
@@ -110,30 +117,67 @@ target_link_libraries(lvdterm PRIVATE
     Qt6::SerialPort
     qtermwidget_core
     libssh2::libssh2
+)
+
+if(WIN32)
     # libssh2/OpenSSL link their Windows system-lib dependencies PRIVATEly
     # to their own static-lib targets, which CMake does not chain through
     # more than one level of static linking - so lvdterm has to name them
     # again itself. ws2_32 for sockets (libssh2), gdi32/crypt32/bcrypt for
     # OpenSSL's Windows entropy/cert-store calls.
-    ws2_32
-    gdi32
-    crypt32
-    bcrypt
-)
+    target_link_libraries(lvdterm PRIVATE ws2_32 gdi32 crypt32 bcrypt)
+else()
+    # Linux: Crypto.cpp's secrets-at-rest backend needs OpenSSL directly
+    # (AES-GCM via EVP), not just libssh2's own private use of it, and
+    # libsecret (freedesktop.org Secret Service - GNOME Keyring/KWallet)
+    # to store the one master key that AES wraps around every saved
+    # secret - see core/Crypto.cpp.
+    find_package(OpenSSL REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
+    target_link_libraries(lvdterm PRIVATE OpenSSL::Crypto PkgConfig::LIBSECRET)
+endif()
 
 # Bundle the Qt runtime DLLs next to lvdterm.exe automatically, instead of
-# needing a manual windeployqt run after every build.
-find_program(WINDEPLOYQT_EXECUTABLE
-    NAMES windeployqt6 windeployqt
-    HINTS "${Qt6_DIR}/../../../bin"
-)
-
-if(WINDEPLOYQT_EXECUTABLE)
-    add_custom_command(TARGET lvdterm POST_BUILD
-        COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations "$<TARGET_FILE:lvdterm>"
-        COMMENT "Running windeployqt to bundle Qt runtime DLLs next to lvdterm.exe"
-        VERBATIM
+# needing a manual windeployqt run after every build. Windows-only: Linux
+# has no equivalent deployment step here - it links against the system's
+# own Qt6 shared libraries instead of carrying its own copies around.
+if(WIN32)
+    find_program(WINDEPLOYQT_EXECUTABLE
+        NAMES windeployqt6 windeployqt
+        HINTS "${Qt6_DIR}/../../../bin"
     )
+
+    if(WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET lvdterm POST_BUILD
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations "$<TARGET_FILE:lvdterm>"
+            COMMENT "Running windeployqt to bundle Qt runtime DLLs next to lvdterm.exe"
+            VERBATIM
+        )
+    else()
+        message(WARNING "windeployqt not found - Qt runtime DLLs won't be bundled automatically; run it manually after building")
+    endif()
 else()
-    message(WARNING "windeployqt not found - Qt runtime DLLs won't be bundled automatically; run it manually after building")
+    # install()/CPack (-> a .deb, see the root CMakeLists.txt) is a
+    # Linux-only packaging path - Windows packaging goes through
+    # windeployqt + installer/lvdterm.iss instead, which don't touch
+    # CMake's own install() mechanism at all, so this has no effect
+    # there one way or the other; kept under the same if(WIN32)/else()
+    # as windeployqt above for symmetry, not because it would be unsafe
+    # to leave unconditional.
+    # Explicit PERMISSIONS rather than trusting whatever the source
+    # filesystem reports: building from a Windows-mounted drive under
+    # WSL (DrvFs) reports every file as 777, which install() otherwise
+    # carries straight into the package - not something to ship.
+    install(TARGETS lvdterm RUNTIME DESTINATION bin
+        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+    )
+    install(FILES ${CMAKE_SOURCE_DIR}/packaging/linux/lvdterm.desktop DESTINATION share/applications
+        PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    )
+    install(FILES ${CMAKE_SOURCE_DIR}/src/resources/icons/app_icon.svg
+        DESTINATION share/icons/hicolor/scalable/apps
+        RENAME lvdterm.svg
+        PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    )
 endif()

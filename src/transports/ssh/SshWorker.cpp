@@ -1,7 +1,5 @@
 #include "SshWorker.h"
 
-#include <winsock2.h>
-
 #include <QSocketNotifier>
 #include <QThread>
 #include <QTimer>
@@ -253,9 +251,6 @@ void SshWorker::teardown()
         libssh2_session_free(m_session);
         m_session = nullptr;
     }
-    if (m_socket != LIBSSH2_INVALID_SOCKET) {
-        closesocket(m_socket);
-        m_socket = LIBSSH2_INVALID_SOCKET;
-        WSACleanup();
-    }
+    SshConnectHelper::closeSocketAndCleanup(m_socket);
+    m_socket = LIBSSH2_INVALID_SOCKET;
 }

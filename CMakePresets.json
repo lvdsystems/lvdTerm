@@ -25,10 +25,32 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux (system Qt6/g++)",
+      "description": "System Qt6 dev packages + g++/Ninja - no hardcoded toolchain paths, unlike llvm-mingw, since apt-installed Qt6/CMake find each other on their own.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "linux",
+      "displayName": "Linux (release)",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
     { "name": "llvm-mingw", "configurePreset": "llvm-mingw" },
-    { "name": "llvm-mingw-release", "configurePreset": "llvm-mingw-release" }
+    { "name": "llvm-mingw-release", "configurePreset": "llvm-mingw-release" },
+    { "name": "linux", "configurePreset": "linux" },
+    { "name": "linux-release", "configurePreset": "linux-release" }
   ]
 }

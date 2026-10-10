@@ -62,4 +62,12 @@ bool authenticate(LIBSSH2_SESSION *session, const SshConnectionSettings &setting
 // theoretical one.
 void clearSocketTimeouts(libssh2_socket_t socket);
 
+// Closes a socket returned by connectSocket() (safe to call with
+// LIBSSH2_INVALID_SOCKET - a no-op then) and releases whatever
+// per-process state closing it needs released (WSACleanup() on Windows;
+// nothing further on POSIX). Both SshWorker and SftpClient had their own
+// copy of this exact teardown sequence; call this instead of
+// duplicating it a third time.
+void closeSocketAndCleanup(libssh2_socket_t socket);
+
 } // namespace SshConnectHelper

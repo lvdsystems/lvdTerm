@@ -41,6 +41,112 @@ avoid the Perl-module vendoring workaround entirely (a newer/different
 Perl on the build machine, or an alternate build path OpenSSL supports)
 rather than reproducing it as-is in CMake.
 
+## Linux packaging ✅ .deb and AppImage both done
+
+lvdterm now builds and runs on Linux from source (`linux`/`linux-release`
+CMake presets - see the README's "Building from source" section).
+
+**`.deb` - done**: `CMakeLists.txt` wires up CPack's Debian generator
+(gated `if(NOT WIN32)` - Windows packaging still goes entirely through
+`windeployqt`/`installer/lvdterm.iss`, untouched). `cmake --build
+--preset linux-release && cpack` (run from inside `build/linux-release/`)
+produces `lvdterm-<version>-Linux.deb`, installing to `/usr/bin/lvdterm`
++ the `.desktop`/icon from `packaging/linux/` via proper `install()`
+rules (new - there were none before this). Runtime dependencies
+(`libqt6core6t64`, `libssl3t64`, `libsecret-1-0`, etc.) are auto-detected
+from the actual built binary via `dpkg-shlibdeps`
+(`CPACK_DEBIAN_PACKAGE_SHLIBDEPS`) rather than hand-listed - deliberately,
+since distros rename these across releases (Debian trixie's own
+time64-transition renames being a real, caught-in-testing example of
+exactly why hardcoding would silently go stale). `libssh2`/`qtermwidget`
+(statically linked, nothing of their own to ship) are excluded from the
+install set via `add_subdirectory(... EXCLUDE_FROM_ALL)` - without it,
+libssh2's own stale `install()` rules (referencing a `NEWS` file this
+vendored copy doesn't have) broke packaging outright.
+
+Verified end-to-end in a real environment (not just "it configures"):
+built, packaged, `dpkg -i`'d, launched the actually-installed
+`/usr/bin/lvdterm` (not just the build-tree binary), confirmed the
+`.desktop`/icon landed in the right XDG locations, then `dpkg -r`'d and
+confirmed a fully clean removal. One real snag found along the way:
+building/packaging from a Windows-mounted drive under WSL (DrvFs, no
+`metadata` mount option) silently reports every file as `777` - `cmake
+--install`'s `PERMISSIONS` arguments are now explicit for exactly this
+reason, but the actual package has to be *built* from a native Linux
+filesystem to get correct permissions at all (DrvFs can't store real
+Unix permission bits no matter what CMake asks for) - worth remembering
+if this gets wired into CI on a Windows runner someday, though a normal
+Linux CI runner/dev machine never hits this.
+
+**AppImage - done**: bundles the binary + its Qt/OpenSSL/libsecret/glib
+runtime deps into a single, distro-agnostic, no-install-needed file, the
+closest Linux equivalent to the Windows portable zip
+(`installer/build-portable.bat`) - unlike the `.deb`, which needs the
+distro's own matching packages already present. Built with `linuxdeploy`
++ `linuxdeploy-plugin-qt` (downloaded tools, not vendored - no CMake
+integration for this one, it's a separate manual step for now):
+
+```sh
+cmake --install build/linux-release --prefix AppDir/usr
+QMAKE=/usr/bin/qmake6 APPIMAGE_EXTRACT_AND_RUN=1 linuxdeploy-x86_64.AppImage \
+  --appdir AppDir --plugin qt --output appimage
+```
+
+(`APPIMAGE_EXTRACT_AND_RUN=1` rather than the `--appimage-extract-and-run`
+CLI flag - linuxdeploy invokes the Qt plugin as its own subprocess
+AppImage, and only the env var reaches that child process too; WSL has
+no FUSE by default, which either form works around.)
+
+Verified two ways, not just "it built": (1) confirmed the running
+process actually loads its libraries from the AppImage's own extracted
+`usr/lib/`, not the system's copies (checked `/proc/<pid>/maps`) - this
+machine already has every runtime dependency installed system-wide, so a
+successful launch alone wouldn't have proven real self-containment, only
+this did; (2) a live SSH connection test (see below) exercised the exact
+same binary inside the AppImage.
+
+Reuses the existing `packaging/linux/lvdterm.desktop` +
+`src/resources/icons/app_icon.svg` rather than duplicating them.
+
+**A real compatibility bug found by actually testing on a second
+machine, not just the build machine**: the first AppImage (built on
+Debian trixie, a rolling/bleeding-edge distro) failed to even start
+elsewhere - `GLIBC_2.38' not found`, `GLIBCXX_3.4.32' not found` - on a
+real Ubuntu 22.04 target (glibc 2.35). glibc symbol versioning is
+forward-only, so a bundled Qt/OpenSSL/glib doesn't help if the *build
+machine's own* glibc/libstdc++ ceiling is higher than the target's -
+and a brand-new distro is exactly the wrong choice of build machine for
+something meant to run broadly. Rebuilt instead on Ubuntu 20.04 LTS
+(glibc 2.31, GCC 9) using Qt's own official prebuilt binaries via
+`aqtinstall` (`pip install aqtinstall && aqt install-qt linux desktop
+6.5.3 gcc_64 -m qtserialport`) rather than that distro's packages, since
+Ubuntu 20.04 predates Qt6 in its own repos entirely - and Qt's official
+Linux builds are themselves built against an old RHEL baseline
+specifically for broad compatibility (`libQt6Core.so.6` needs glibc
+2.28 at most, lower than Ubuntu 20.04's *own* 2.31). Checked what was
+actually produced rather than assuming
+(`objdump -T dist/lvdterm | grep -oE 'GLIBC(XX)?_[0-9.]+|CXXABI_[0-9.]+'
+| sort -V`): max requirement `GLIBC_2.25`/`GLIBCXX_3.4.22`/
+`CXXABI_1.3.9`, comfortably below the failing target's 2.35. Full recipe
+in [`packaging/linux/README.md`](packaging/linux/README.md).
+
+Re-verified on the actual host that originally failed (not just
+reasoned about it): copied the rebuilt AppImage over, ran it there - no
+glibc errors at all this time, and it launched fully against that
+machine's own real local X display (not a mock/headless check),
+reaching the same successful-startup log output seen on every other
+platform this project runs on.
+
+**A real end-to-end functional test, not just a launch check**: built a
+small standalone program linking this project's actual `SshTransport`/
+libssh2 code (the same classes the real app uses, not a mock) and used
+it to connect to a real SSH server with password auth - genuinely
+connected, correctly showed and auto-accepted the known-hosts prompt for
+a never-before-seen host (the real first-connection path, not special-
+cased around), received the real shell banner, sent a command, and got
+the exact expected output back. Confirms the Linux build's SSH stack
+isn't just compiling - it works against a real remote host.
+
 ## Macro automation
 
 Noted directly as a gap versus Tera Term (its own scripting language,

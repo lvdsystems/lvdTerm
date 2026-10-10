@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=lvdterm
+Comment=A tabbed and splittable SSH / Telnet / Serial terminal emulator
+Exec=lvdterm
+Icon=lvdterm
+Terminal=false
+Categories=Network;TerminalEmulator;

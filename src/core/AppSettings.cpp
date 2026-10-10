@@ -12,15 +12,23 @@ constexpr auto kKeyboardProfileKey = "terminal/keyboardProfile";
 
 constexpr auto kDefaultTheme = "Dark";
 constexpr auto kDefaultColorScheme = "Dark";
-constexpr auto kFallbackFontFamily = "Consolas";
 constexpr int kDefaultFontPointSize = 10;
 constexpr auto kDefaultKeyboardProfile = "default";
 
-// Plain Consolas (always present on Windows) - reverted from a "prefer
-// Cascadia Mono" heuristic per explicit feedback.
+// Plain Consolas on Windows (always present there) - reverted from a
+// "prefer Cascadia Mono" heuristic per explicit feedback, so this stays
+// a flat literal, not reintroduced cleverness. Consolas doesn't exist on
+// Linux at all, though, so there's nothing to hardcode equivalently
+// there - QFontDatabase::systemFont(FixedFont) is Qt's own "give me a
+// monospace font" query, the natural non-Windows equivalent of "just
+// pick the one that's always there."
 QString defaultFontFamily()
 {
-    return QString::fromLatin1(kFallbackFontFamily);
+#ifdef _WIN32
+    return QStringLiteral("Consolas");
+#else
+    return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+#endif
 }
 } // namespace
 

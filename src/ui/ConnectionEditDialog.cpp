@@ -135,11 +135,18 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     bottomForm->addRow(QStringLiteral("Log file:"), logFileRow);
     bottomForm->addRow(QString(), m_logTimestampCheck);
 
-    auto *dpapiNote = new QLabel(
-        QStringLiteral("Saved passwords/passphrases are encrypted with your Windows account (DPAPI). "
-                        "That protects the file if it's copied elsewhere, but not against other software "
-                        "running as you on this PC - local storage is never fully safe."),
-        this);
+#ifdef _WIN32
+    const QString secretsNoteText = QStringLiteral(
+        "Saved passwords/passphrases are encrypted with your Windows account (DPAPI). "
+        "That protects the file if it's copied elsewhere, but not against other software "
+        "running as you on this PC - local storage is never fully safe.");
+#else
+    const QString secretsNoteText = QStringLiteral(
+        "Saved passwords/passphrases are encrypted with a key kept in your login keyring. "
+        "That protects the file if it's copied elsewhere, but not against other software "
+        "running as you on this PC - local storage is never fully safe.");
+#endif
+    auto *dpapiNote = new QLabel(secretsNoteText, this);
     dpapiNote->setWordWrap(true);
     dpapiNote->setStyleSheet(QStringLiteral("color: palette(mid);"));
 

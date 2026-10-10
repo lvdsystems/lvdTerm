@@ -13,3 +13,6 @@ compile_commands.json
 *.exp
 *.lib
 *.dll
+*.zip
+*.AppImage
+*.deb

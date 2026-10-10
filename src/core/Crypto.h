@@ -2,16 +2,20 @@
 
 #include <QByteArray>
 
-// Wraps Windows DPAPI (CryptProtectData/CryptUnprotectData) for at-rest
-// storage of saved-connection secrets (SSH passwords/passphrases).
+// At-rest encryption for saved-connection secrets (SSH passwords/
+// passphrases), backed by whatever the OS offers for "tie this to the
+// logged-in user, no UI prompt, never block": Windows DPAPI
+// (CryptProtectData/CryptUnprotectData), or on Linux a libsecret-stored
+// master key wrapping AES-256-GCM (see Crypto.cpp's Linux half for the
+// full design and why).
 //
-// IMPORTANT CAVEAT, surfaced to the user in ConnectionEditDialog: DPAPI
-// ties the encryption to the current Windows user account, so the
+// IMPORTANT CAVEAT, surfaced to the user in ConnectionEditDialog: both
+// backends tie the encryption to the current OS user account, so the
 // resulting blob is useless if copied to another machine or read by
-// another account - but it is *not* protection against malware or any
-// other code running as this same user, which can call CryptUnprotectData
-// itself just as easily as lvdterm does. This is "safe from someone
-// browsing your files", not "safe from anything running on your PC".
+// another account - but neither is protection against malware or any
+// other code running as this same user, which can call the same OS APIs
+// lvdterm does just as easily. This is "safe from someone browsing your
+// files", not "safe from anything running on your PC".
 namespace Crypto
 {
 
