@@ -39,6 +39,15 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
 
     layout->addWidget(buttons);
+
+    // The wrapped description/license labels need more height at a given
+    // width than the layout's own minimum size accounts for, so a dialog
+    // could be opened (or shrunk) too short for them. Pin the minimum
+    // height to what's actually needed at the chosen width.
+    const int dialogWidth = qMax(sizeHint().width(), 420);
+    setMinimumWidth(dialogWidth);
+    resize(dialogWidth, layout->totalHeightForWidth(dialogWidth));
+    setMinimumHeight(layout->totalHeightForWidth(dialogWidth));
 }
 
 void AboutDialog::showResourceText(const QString &title, const QString &resourcePath)

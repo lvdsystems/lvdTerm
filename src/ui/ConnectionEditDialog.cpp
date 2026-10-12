@@ -40,11 +40,11 @@ constexpr int kSshIndex = 2;
 constexpr int kLocalIndex = 3;
 } // namespace
 
-ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defaultFolder)
+ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defaultFolder, const QStringList &existingFolders)
     : QDialog(parent)
     , m_id(QUuid::createUuid())
     , m_nameEdit(new QLineEdit(this))
-    , m_folderEdit(new QLineEdit(this))
+    , m_folderCombo(new QComboBox(this))
     , m_typeCombo(new QComboBox(this))
     , m_autoReconnectCheck(new QCheckBox(QStringLiteral("Reconnect automatically if the connection drops"), this))
     , m_keyboardProfileCombo(new QComboBox(this))
@@ -64,8 +64,13 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     setWindowTitle(QStringLiteral("New Connection"));
 
     m_nameEdit->setPlaceholderText(QStringLiteral("shown in the connection tree"));
-    m_folderEdit->setText(defaultFolder);
-    m_folderEdit->setPlaceholderText(QStringLiteral("e.g. Work/Servers - blank for the root"));
+    m_folderCombo->setEditable(true);
+    m_folderCombo->setInsertPolicy(QComboBox::NoInsert); // typed text is read back in profile(), not added to the list
+    m_folderCombo->addItems(existingFolders);
+    m_folderCombo->setEditText(defaultFolder);
+    m_folderCombo->lineEdit()->setPlaceholderText(QStringLiteral("pick one, or type a new one (e.g. Work/Servers) - blank for the root"));
+    m_folderCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_folderCombo->setMinimumContentsLength(24);
 
     m_typeCombo->addItem(QStringLiteral("Serial"));
     m_typeCombo->addItem(QStringLiteral("Telnet"));
@@ -134,7 +139,7 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     // keyboard, viewer, logging) that apply regardless of type.
     auto *topForm = new QFormLayout();
     topForm->addRow(QStringLiteral("Name:"), m_nameEdit);
-    topForm->addRow(QStringLiteral("Folder:"), m_folderEdit);
+    topForm->addRow(QStringLiteral("Folder:"), m_folderCombo);
     topForm->addRow(QStringLiteral("Type:"), m_typeCombo);
 
     auto *bottomForm = new QFormLayout();
@@ -218,7 +223,7 @@ void ConnectionEditDialog::setProfile(const ConnectionProfile &profile)
 
     m_id = profile.id;
     m_nameEdit->setText(profile.name);
-    m_folderEdit->setText(profile.folder);
+    m_folderCombo->setEditText(profile.folder);
     m_autoReconnectCheck->setChecked(profile.autoReconnect);
     m_keyboardProfileCombo->setCurrentIndex(qMax(0, m_keyboardProfileCombo->findData(profile.keyboardProfile)));
     m_viewerCombo->setCurrentIndex(qMax(0, m_viewerCombo->findData(static_cast<int>(profile.viewer))));
@@ -252,7 +257,14 @@ ConnectionProfile ConnectionEditDialog::profile() const
     ConnectionProfile p;
     p.id = m_id;
     p.name = m_nameEdit->text().trimmed();
-    p.folder = m_folderEdit->text().trimmed();
+    // Normalised so "Work//Servers/ " and "/Work/Servers" are the same
+    // folder as "Work/Servers" rather than a lookalike sibling.
+    QStringList folderParts;
+    for (const QString &part : m_folderCombo->currentText().split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
+        if (!part.trimmed().isEmpty())
+            folderParts << part.trimmed();
+    }
+    p.folder = folderParts.join(QLatin1Char('/'));
     p.type = indexToType(m_typeCombo->currentIndex());
     p.autoReconnect = m_autoReconnectCheck->isChecked();
     p.keyboardProfile = m_keyboardProfileCombo->currentData().toString();

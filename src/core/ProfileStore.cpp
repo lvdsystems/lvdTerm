@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QStandardPaths>
 
 ProfileStore::ProfileStore(QObject *parent) : QObject(parent)
@@ -147,4 +148,25 @@ void ProfileStore::removeFolder(const QString &path)
         save();
         emit changed();
     }
+}
+
+QStringList ProfileStore::allFolders() const
+{
+    QSet<QString> folders;
+    auto addWithAncestors = [&folders](const QString &path) {
+        QString prefix;
+        for (const QString &part : path.split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
+            prefix += prefix.isEmpty() ? part : QLatin1Char('/') + part;
+            folders.insert(prefix);
+        }
+    };
+
+    for (const ConnectionProfile &p : m_profiles)
+        addWithAncestors(p.folder);
+    for (const QString &folder : m_emptyFolders)
+        addWithAncestors(folder);
+
+    QStringList sorted(folders.begin(), folders.end());
+    sorted.sort(Qt::CaseInsensitive);
+    return sorted;
 }

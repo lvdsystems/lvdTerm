@@ -5,6 +5,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QShortcut>
 #include <QStyle>
 #include <QToolBar>
 #include <QTreeWidget>
@@ -30,6 +31,21 @@ ConnectionTreeDock::ConnectionTreeDock(ProfileStore *store, QWidget *parent)
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_tree, &QTreeWidget::customContextMenuRequested, this, &ConnectionTreeDock::onContextMenuRequested);
     connect(m_tree, &QTreeWidget::itemActivated, this, &ConnectionTreeDock::onItemActivated);
+
+    // Delete key on the selected connection or folder - the same
+    // deleteItem()/deleteFolder() the right-click menu uses, so it asks
+    // first (and a folder's prompt says how many connections go with it).
+    auto *deleteShortcut = new QShortcut(Qt::Key_Delete, m_tree);
+    deleteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(deleteShortcut, &QShortcut::activated, this, [this] {
+        QTreeWidgetItem *item = m_tree->currentItem();
+        if (!item)
+            return;
+        if (kindOf(item) == FolderKind)
+            deleteFolder(item);
+        else
+            deleteItem(item);
+    });
 
     auto *toolbar = new QToolBar(this);
     toolbar->setIconSize(QSize(16, 16));
@@ -170,7 +186,7 @@ void ConnectionTreeDock::onContextMenuRequested(const QPoint &pos)
         return;
 
     if (chosen == newAction) {
-        ConnectionEditDialog dialog(this, folderPathOf(item));
+        ConnectionEditDialog dialog(this, folderPathOf(item), m_store->allFolders());
         if (dialog.exec() == QDialog::Accepted)
             m_store->addProfile(dialog.profile());
     } else if (chosen == newFolderAction) {
@@ -190,7 +206,7 @@ void ConnectionTreeDock::onContextMenuRequested(const QPoint &pos)
 
 void ConnectionTreeDock::newConnection()
 {
-    ConnectionEditDialog dialog(this, folderPathOf(m_tree->currentItem()));
+    ConnectionEditDialog dialog(this, folderPathOf(m_tree->currentItem()), m_store->allFolders());
     if (dialog.exec() == QDialog::Accepted)
         m_store->addProfile(dialog.profile());
 }
@@ -202,7 +218,7 @@ void ConnectionTreeDock::editItem(QTreeWidgetItem *item)
 
     for (const ConnectionProfile &p : m_store->profiles()) {
         if (p.id == connectionIdOf(item)) {
-            ConnectionEditDialog dialog(this);
+            ConnectionEditDialog dialog(this, QString(), m_store->allFolders());
             dialog.setProfile(p);
             if (dialog.exec() == QDialog::Accepted)
                 m_store->updateProfile(dialog.profile());

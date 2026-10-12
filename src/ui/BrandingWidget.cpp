@@ -27,10 +27,17 @@ BrandingWidget::BrandingWidget(QWidget *parent) : QWidget(parent)
     logoCardLayout->setContentsMargins(16, 12, 16, 12);
     auto *logoLabel = new QLabel(logoCard);
     const QPixmap logo(QStringLiteral(":/branding/logo_lvd.png"));
-    if (!logo.isNull())
-        logoLabel->setPixmap(logo.scaledToWidth(260, Qt::SmoothTransformation));
+    if (!logo.isNull()) {
+        const QPixmap scaled = logo.scaledToWidth(260, Qt::SmoothTransformation);
+        logoLabel->setPixmap(scaled);
+        // Never shrinkable: a dialog laid out a little shorter than its
+        // wrapped text needs would otherwise squeeze this card first,
+        // leaving just a sliver of the logo's top edge visible.
+        logoLabel->setFixedSize(scaled.size());
+    }
     logoLabel->setAlignment(Qt::AlignHCenter);
     logoCardLayout->addWidget(logoLabel);
+    logoCard->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     layout->addWidget(logoCard, 0, Qt::AlignHCenter);
 
     auto *companyLabel = new QLabel(QStringLiteral("LVD Systems S.r.l."), this);

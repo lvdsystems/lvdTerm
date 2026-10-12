@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QStringList>
 #include <QVector>
 
 #include "ConnectionProfile.h"
@@ -36,6 +37,11 @@ public:
     // profile currently uses them.
     const QVector<QString> &emptyFolders() const { return m_emptyFolders; }
     void addEmptyFolder(const QString &path);
+
+    // Every folder that exists right now, as sorted "/"-separated paths:
+    // those used by a profile, the explicitly-created empty ones, and
+    // every ancestor of either ("Work/Servers" implies "Work").
+    QStringList allFolders() const;
     // Deletes every profile and every empty-folder entry at or under
     // path (i.e. the folder itself and all its subfolders) - the
     // confirmation prompt for this lives in ConnectionTreeDock.

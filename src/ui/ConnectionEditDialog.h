@@ -25,7 +25,13 @@ class ConnectionEditDialog : public QDialog
 public:
     // defaultFolder pre-fills the folder field, e.g. when adding a new
     // connection from inside a folder already selected in the tree.
-    explicit ConnectionEditDialog(QWidget *parent = nullptr, const QString &defaultFolder = QString());
+    // existingFolders (see ProfileStore::allFolders()) fills the field's
+    // dropdown; the field stays editable, and typing a folder that isn't
+    // in the list creates it (folders exist by being used - see
+    // ProfileStore - so saving the connection is what creates it,
+    // parents included).
+    explicit ConnectionEditDialog(QWidget *parent = nullptr, const QString &defaultFolder = QString(),
+                                  const QStringList &existingFolders = QStringList());
 
     void setProfile(const ConnectionProfile &profile); // switches to edit mode
     ConnectionProfile profile() const;                 // preserves id when editing
@@ -40,7 +46,7 @@ private:
     QUuid m_id;
 
     QLineEdit *m_nameEdit = nullptr;
-    QLineEdit *m_folderEdit = nullptr;
+    QComboBox *m_folderCombo = nullptr; // editable: pick an existing folder or type a new path
     QComboBox *m_typeCombo = nullptr;
     QCheckBox *m_autoReconnectCheck = nullptr;
     QComboBox *m_keyboardProfileCombo = nullptr; // see KeyboardProfiles.h - applies regardless of type
