@@ -71,6 +71,10 @@ HexDumpWidget::HexDumpWidget(QWidget *parent) : QWidget(parent), m_textEdit(new 
     layout->setSpacing(0);
     layout->addWidget(toolbar);
     layout->addWidget(m_textEdit, 1);
+
+    m_textEdit->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_textEdit, &QWidget::customContextMenuRequested, this,
+            [this](const QPoint &pos) { emit contextMenuRequested(m_textEdit->mapToGlobal(pos)); });
 }
 
 void HexDumpWidget::appendData(const QByteArray &data)

@@ -72,12 +72,17 @@ private:
     void addTerminalTab(const NewConnectionResult &result);
     TerminalView *makeView(const NewConnectionResult &result);
 
+    void showPaneContextMenu(TerminalView *view, const QPoint &globalPos); // right-click inside a pane
+
     void splitActivePane(Qt::Orientation orientation);
     void finishSplitWithResult(QSplitter *splitter, SplitPicker *picker, const NewConnectionResult &result);
     void collapseSplitterIfSingle(QSplitter *splitter); // shared by closeActivePane() and a cancelled SplitPicker
     void closeActivePane();
+    SplitPicker *focusedPicker() const; // the split picker holding keyboard focus in the current tab, if any
     void closeTab(int index);
-    void confirmCloseCurrentTab(); // Ctrl+W - unlike closeTab(), asks first
+    void closePane(TerminalView *view); // closes just this pane (the tab too if it was the last one) - no prompt
+    void confirmClosePane(TerminalView *view); // closePane() after asking
+    void confirmCloseActivePane(); // Ctrl+W - the active pane only (the tab too if it was the last one); asks first
     void renameTab(int index);
     void toggleSessionLogging();
     void onFocusChanged(QWidget *old, QWidget *now);

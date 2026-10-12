@@ -78,8 +78,8 @@ public:
     void showFindBar(); // Ctrl+F, also bound directly on this widget
 
     // Used by MainWindow's "Terminal" menu (enabled only while a terminal
-    // pane has focus - see MainWindow::createMenus()) and, for Paste, by
-    // right-click (see the constructor's configureRequest hookup).
+    // pane has focus - see MainWindow::createMenus()) and by the
+    // right-click menu (see MainWindow::showPaneContextMenu()).
     void copySelection();
     void pasteFromClipboard();
     void clearScreen(); // Emulation::clearEntireScreen() - visible screen only, pushed into history
@@ -96,6 +96,7 @@ public:
     TransportFactory recreateFactory() const { return m_recreate; }
     const std::optional<SshConnectionSettings> &sshSettings() const { return m_sshSettings; }
     const std::optional<ConnectionProfile> &sessionSnapshot() const { return m_sessionSnapshot; }
+    bool isHexMode() const { return m_hexMode; }
 
 signals:
     // Forwarded from whichever Transport is currently active - stable
@@ -103,6 +104,9 @@ signals:
     // Transport's own signals directly.
     void stateChanged(Transport::State state);
     void errorOccurred(const QString &message);
+    // Right-click inside the pane (terminal, or hex dump) - MainWindow
+    // owns what the menu offers, since every item acts on the pane tree.
+    void contextMenuRequested(const QPoint &globalPos);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

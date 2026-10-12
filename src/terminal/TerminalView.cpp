@@ -51,6 +51,7 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         // paints itself at whatever default/stale geometry it happens to
         // have, it doesn't just stay invisible on its own.
         m_display->hide();
+        connect(m_hexView, &HexDumpWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
     }
 
     auto *layout = new QVBoxLayout(this);
@@ -132,14 +133,14 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
                 m_display->copyClipboard();
         });
 
-        // Right-click paste: configureRequest() is TerminalDisplay's own
+        // Right-click menu: configureRequest() is TerminalDisplay's own
         // "user right-clicked (and no mouse-aware program has the mouse right
-        // now, or Shift is held)" signal - the terminal's own context menu
-        // (added in an earlier round: Clear Buffer/Clear Screen/Copy/Paste)
-        // is removed per direct request, replaced with right-click pasting
-        // directly. MainWindow's top-level "Terminal" menu still offers all
-        // four actions, kept as-is.
-        connect(m_display, &TerminalDisplay::configureRequest, this, [this](const QPoint &) { m_display->pasteClipboard(); });
+        // now, or Shift is held)" signal. It used to paste directly; now it
+        // asks MainWindow for the pane menu (split/clone/copy/paste - see
+        // MainWindow::showPaneContextMenu()). Paste stays one click away
+        // in that menu.
+        connect(m_display, &TerminalDisplay::configureRequest, this,
+                [this](const QPoint &pos) { emit contextMenuRequested(m_display->mapToGlobal(pos)); });
 
         m_session->setTransport(m_transport);
         // See KeyboardProfiles.h/ConnectionProfile::keyboardProfile: an

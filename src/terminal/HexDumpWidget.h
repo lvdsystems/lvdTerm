@@ -40,6 +40,11 @@ public:
     void setGrouping(Grouping grouping);
     Grouping grouping() const { return m_grouping; }
 
+signals:
+    // Right-click inside the dump (replaces the text edit's own default
+    // Copy/Select All menu, so the pane gets the same menu as a terminal).
+    void contextMenuRequested(const QPoint &globalPos);
+
 private:
     void rebuildDisplay();
     static QString formatRow(qint64 offset, const QByteArray &rowBytes, Grouping grouping);

@@ -10,6 +10,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPointer>
 #include <QShowEvent>
 #include <QSplitter>
 #include <QStatusBar>
@@ -125,9 +126,9 @@ void MainWindow::createMenus()
 
     connectionMenu->addSeparator();
 
-    m_closeTabAction = connectionMenu->addAction(QStringLiteral("&Close Tab"));
+    m_closeTabAction = connectionMenu->addAction(QStringLiteral("&Close Pane / Tab"));
     m_closeTabAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+W")));
-    connect(m_closeTabAction, &QAction::triggered, this, &MainWindow::confirmCloseCurrentTab);
+    connect(m_closeTabAction, &QAction::triggered, this, &MainWindow::confirmCloseActivePane);
 
     // No "Pane" menu - these actions live only on `this` (so their
     // shortcuts keep working) and the tab bar's right-click context menu
@@ -420,12 +421,47 @@ TerminalView *MainWindow::makeView(const NewConnectionResult &result)
         const QString title = index >= 0 ? m_tabs->tabText(index) : view->windowTitle();
         statusBar()->showMessage(QStringLiteral("%1: %2").arg(title, message), 5000);
     });
+    connect(view, &TerminalView::contextMenuRequested, this, [this, view](const QPoint &globalPos) { showPaneContextMenu(view, globalPos); });
     connect(view, &TerminalView::stateChanged, this, [this, view] {
         if (QWidget *root = tabRootOf(view))
             updateTabIcon(root);
     });
 
     return view;
+}
+
+void MainWindow::showPaneContextMenu(TerminalView *view, const QPoint &globalPos)
+{
+    // Split/Close Pane act on the active pane - make it the one that was
+    // actually right-clicked (focus may not have followed the click yet).
+    m_activeView = view;
+    view->setFocus();
+
+    QWidget *root = tabRootOf(view);
+    const bool multiplePanes = root && collectViews(root).size() > 1;
+
+    QMenu menu(this);
+
+    if (!view->isHexMode()) {
+        connect(menu.addAction(QStringLiteral("Copy")), &QAction::triggered, view, &TerminalView::copySelection);
+        connect(menu.addAction(QStringLiteral("Paste")), &QAction::triggered, view, &TerminalView::pasteFromClipboard);
+        menu.addSeparator();
+    }
+
+    // "\t<keys>" is just a right-aligned shortcut hint: the real
+    // shortcuts live on m_splitRightAction/m_splitDownAction.
+    connect(menu.addAction(QStringLiteral("Split Horizontally\tCtrl+Shift+R")), &QAction::triggered, this,
+            [this] { splitActivePane(Qt::Horizontal); });
+    connect(menu.addAction(QStringLiteral("Split Vertically\tCtrl+Shift+D")), &QAction::triggered, this, [this] { splitActivePane(Qt::Vertical); });
+
+    menu.addSeparator();
+
+    // Deferred a turn: closing deletes `view`, whose own right-click
+    // handler is still on the stack underneath this menu's exec().
+    connect(menu.addAction(multiplePanes ? QStringLiteral("Close Pane") : QStringLiteral("Close Tab")), &QAction::triggered, this,
+            [this, view] { QTimer::singleShot(0, this, [this, view = QPointer<TerminalView>(view)] { if (view) confirmClosePane(view); }); });
+
+    menu.exec(globalPos);
 }
 
 QWidget *MainWindow::tabRootOf(QWidget *w) const
@@ -606,11 +642,39 @@ void MainWindow::collapseSplitterIfSingle(QSplitter *splitter)
         updateTabIcon(root);
 }
 
+SplitPicker *MainWindow::focusedPicker() const
+{
+    for (QWidget *w = QApplication::focusWidget(); w; w = w->parentWidget()) {
+        if (auto *picker = qobject_cast<SplitPicker *>(w))
+            return tabRootOf(picker) == m_tabs->currentWidget() ? picker : nullptr;
+    }
+    return nullptr;
+}
+
 void MainWindow::closeActivePane()
 {
-    TerminalView *view = currentActiveView();
-    if (!view)
+    // A pane that's still the "connect to:" picker (a split that hasn't
+    // been given a connection yet) is a pane too - closing it means
+    // cancelling it. Without this, the real pane next to it was closed
+    // instead, leaving the picker alone in the tab.
+    if (SplitPicker *picker = focusedPicker()) {
+        emit picker->cancelled();
         return;
+    }
+
+    if (TerminalView *view = currentActiveView())
+        closePane(view);
+}
+
+void MainWindow::closePane(TerminalView *view)
+{
+    // The tab's last real pane: closing it closes the tab, even if a
+    // picker is still sitting beside it (a tab with no terminal in it
+    // would just be an orphaned connection picker).
+    if (QWidget *root = tabRootOf(view); root && collectViews(root).size() == 1) {
+        closeTab(m_tabs->indexOf(root));
+        return;
+    }
 
     QWidget *parent = view->parentWidget();
 
@@ -630,23 +694,52 @@ void MainWindow::closeActivePane()
         newFocusView->setFocus();
 }
 
-void MainWindow::confirmCloseCurrentTab()
+void MainWindow::confirmCloseActivePane()
 {
-    const int index = m_tabs->currentIndex();
-    QWidget *root = m_tabs->widget(index);
+    QWidget *root = m_tabs->currentWidget();
     if (!root)
         return;
 
-    // The welcome tab has no session to lose - nothing to confirm.
-    if (!collectViews(root).isEmpty()) {
-        const QMessageBox::StandardButton answer = QMessageBox::question(
-            this, QStringLiteral("Close Tab"), QStringLiteral("Close \"%1\" and end its session?").arg(m_tabs->tabText(index)),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if (answer != QMessageBox::Yes)
-            return;
+    // An unconfigured split's picker has no session to lose either - just
+    // cancel it, no prompt.
+    if (SplitPicker *picker = focusedPicker()) {
+        emit picker->cancelled();
+        return;
     }
 
-    closeTab(index);
+    const QVector<TerminalView *> views = collectViews(root);
+
+    // The welcome tab has no session to lose - nothing to confirm.
+    if (views.isEmpty()) {
+        closeTab(m_tabs->currentIndex());
+        return;
+    }
+
+    // Just the pane that was last clicked/focused, not the whole tab -
+    // m_activeView is sticky and may still point into another tab (or a
+    // since-deleted pane's replacement), so only trust it if it's
+    // actually in the current tab.
+    confirmClosePane(views.contains(m_activeView) ? m_activeView : views.first());
+}
+
+void MainWindow::confirmClosePane(TerminalView *target)
+{
+    QWidget *root = tabRootOf(target);
+    if (!root)
+        return;
+
+    const bool lastPane = collectViews(root).size() == 1;
+
+    const QString question = lastPane ? QStringLiteral("Close \"%1\" and end its session?").arg(m_tabs->tabText(m_tabs->indexOf(root)))
+                                      : QStringLiteral("Close this pane and end its session?");
+    const QMessageBox::StandardButton answer = QMessageBox::question(this, lastPane ? QStringLiteral("Close Tab") : QStringLiteral("Close Pane"),
+                                                                     question, QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes)
+        return;
+
+    if (m_activeView == target)
+        m_activeView = nullptr;
+    closePane(target); // also closes the tab itself when this was its only pane
 }
 
 void MainWindow::closeTab(int index)
