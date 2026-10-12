@@ -103,6 +103,12 @@ public:
     // the others a neutral one - set by MainWindow::updatePaneFrames().
     void setPaneActive(bool active);
 
+    // Deliberately small (the natural minimum is ~130 px per pane): every
+    // pane adds its minimum to its split's, so with several side by side
+    // the window couldn't otherwise be made narrow enough to snap to half
+    // a screen. A pane squeezed this small just shows fewer columns.
+    QSize minimumSizeHint() const override { return QSize(80, 60); }
+
 signals:
     // Forwarded from whichever Transport is currently active - stable
     // across a reconnect's transport swap, unlike connecting to the

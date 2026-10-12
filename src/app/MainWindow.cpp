@@ -15,6 +15,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTabBar>
+#include <QProxyStyle>
 #include <QTabWidget>
 #include <QTimer>
 
@@ -40,6 +41,42 @@
 #include "ui/TelnetConnectDialog.h"
 #include "ui/WelcomeWidget.h"
 
+namespace
+{
+// The base style, minus the frame QTabWidget draws around its page (and
+// the margin that frame reserves).
+class NoFrameTabStyle : public QProxyStyle
+{
+public:
+    explicit NoFrameTabStyle(QObject *owner) : QProxyStyle(QStringLiteral("Fusion")) { setParent(owner); }
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget) const override
+    {
+        if (element == PE_FrameTabWidget)
+            return;
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+
+    QRect subElementRect(SubElement element, const QStyleOption *option, const QWidget *widget) const override
+    {
+        // The page gets the whole pane rect, not the pane rect shrunk by the
+        // frame - except at the top: the selected tab is drawn a couple of
+        // pixels over the pane's top edge, which would cover the top of
+        // the active pane's border, so the page starts below that overlap.
+        if (element == SE_TabWidgetTabContents) {
+            QRect page = QProxyStyle::subElementRect(SE_TabWidgetTabPane, option, widget);
+            const QRect framed = QProxyStyle::subElementRect(SE_TabWidgetTabContents, option, widget);
+            if (const auto *tabs = qobject_cast<const QTabWidget *>(widget); !tabs || tabs->tabPosition() == QTabWidget::North)
+                page.setTop(framed.top());
+            else
+                return framed;
+            return page;
+        }
+        return QProxyStyle::subElementRect(element, option, widget);
+    }
+};
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_profileStore(new ProfileStore(this))
@@ -49,6 +86,13 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle(QStringLiteral("lvdterm"));
     resize(1000, 650);
+
+    // No frame around the page area: the panes draw their own borders, and
+    // this one would show as an extra outline around (and, with a small
+    // gap, between) them. Set on the tab widget alone - a widget's style
+    // isn't inherited by its children, so the tab bar looks as before.
+    auto *tabStyle = new NoFrameTabStyle(m_tabs);
+    m_tabs->setStyle(tabStyle);
 
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
@@ -63,6 +107,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_connectionDock, &ConnectionTreeDock::connectionActivated, this, &MainWindow::openProfile);
 
     addDockWidget(Qt::RightDockWidgetArea, m_sftpDock);
+
+    // The docks' natural minimums (~140 px: the widest button/column) add
+    // up with the central area's to a window too wide to snap to half a
+    // screen. Let them squeeze further - contents just clip.
+    m_connectionDock->setMinimumWidth(100);
+    m_sftpDock->setMinimumWidth(100);
 
     connect(qApp, &QApplication::focusChanged, this, &MainWindow::onFocusChanged);
 

@@ -13,4 +13,11 @@ class WelcomeWidget : public QWidget
 
 public:
     explicit WelcomeWidget(QWidget *parent = nullptr);
+
+    // Its natural minimum (the unwrapped subtitle + logo card) is ~460 px,
+    // and a QTabWidget's minimum is that of its widest page - so even
+    // when another tab is showing, this one kept the whole window from
+    // being narrower than that (e.g. snapped to half a screen). Clipping
+    // when squeezed is fine for a splash page.
+    QSize minimumSizeHint() const override { return QSize(120, 100); }
 };
