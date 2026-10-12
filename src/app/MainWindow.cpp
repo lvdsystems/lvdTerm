@@ -31,6 +31,8 @@
 #include "ui/ConnectionTreeDock.h"
 #include "ui/SerialConnectDialog.h"
 #include "ui/SettingsDialog.h"
+#include "core/AppSettings.h"
+#include "ui/PaneSplitter.h"
 #include "ui/SftpDock.h"
 #include "ui/SplitPicker.h"
 #include "ui/SshConnectDialog.h"
@@ -197,12 +199,24 @@ void MainWindow::createMenus()
     QMenu *viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu->addAction(m_connectionDock->toggleViewAction());
     viewMenu->addAction(m_sftpDock->toggleViewAction());
-    viewMenu->addSeparator();
 
-    QAction *settingsAction = viewMenu->addAction(QStringLiteral("&Settings..."));
+    // A menu-bar entry of its own that opens the dialog directly (no
+    // dropdown with a single item in it).
+    QAction *settingsAction = menuBar()->addAction(QStringLiteral("&Settings"));
     connect(settingsAction, &QAction::triggered, this, [this] {
         SettingsDialog dialog(this);
         dialog.exec();
+    });
+
+    // The gap between split panes is a property of every splitter in
+    // every tab - resize them all live as the setting changes.
+    connect(&AppSettings::instance(), &AppSettings::paneAppearanceChanged, this, [this] {
+        // (PaneSplitter has no Q_OBJECT - header-only, no signals - so
+        // findChildren<PaneSplitter *> won't compile; filter by type.)
+        for (QSplitter *splitter : findChildren<QSplitter *>()) {
+            if (dynamic_cast<PaneSplitter *>(splitter))
+                splitter->setHandleWidth(AppSettings::instance().paneGap());
+        }
     });
 
     QMenu *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
@@ -480,6 +494,7 @@ void MainWindow::addTerminalTab(const NewConnectionResult &result)
     view->connectToHost();
     view->setFocus();
     updateTabIcon(view);
+    updatePaneFrames();
 }
 
 void MainWindow::onFocusChanged(QWidget * /*old*/, QWidget *now)
@@ -503,6 +518,19 @@ void MainWindow::onFocusChanged(QWidget * /*old*/, QWidget *now)
     if (focusedView) {
         m_activeView = focusedView;
         m_sftpDock->setActiveConnection(focusedView->sshSettings());
+        updatePaneFrames();
+    }
+}
+
+void MainWindow::updatePaneFrames()
+{
+    // The accent border follows the sticky "active" pane (see
+    // m_activeView), not literal focus - it stays on the last-used pane
+    // while focus is in the SFTP dock or a dialog.
+    TerminalView *active = currentActiveView();
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        for (TerminalView *view : collectViews(m_tabs->widget(i)))
+            view->setPaneActive(view == active);
     }
 }
 
@@ -531,7 +559,7 @@ void MainWindow::splitActivePane(Qt::Orientation orientation)
     TerminalView *existing = m_activeView;
     auto *picker = new SplitPicker(m_profileStore);
 
-    auto *splitter = new QSplitter(orientation);
+    auto *splitter = new PaneSplitter(orientation);
     QWidget *parent = existing->parentWidget();
 
     if (auto *parentSplitter = qobject_cast<QSplitter *>(parent)) {
@@ -610,6 +638,7 @@ void MainWindow::finishSplitWithResult(QSplitter *splitter, SplitPicker *picker,
 
     newView->connectToHost();
     newView->setFocus();
+    updatePaneFrames();
 }
 
 void MainWindow::collapseSplitterIfSingle(QSplitter *splitter)
@@ -692,6 +721,7 @@ void MainWindow::closePane(TerminalView *view)
 
     if (auto *newFocusView = qobject_cast<TerminalView *>(m_tabs->currentWidget()))
         newFocusView->setFocus();
+    updatePaneFrames();
 }
 
 void MainWindow::confirmCloseActivePane()
@@ -764,6 +794,7 @@ void MainWindow::onCurrentTabChanged(int index)
     const QVector<TerminalView *> views = collectViews(root);
     if (!views.isEmpty())
         views.first()->setFocus();
+    updatePaneFrames();
 }
 
 void MainWindow::renameTab(int index)
@@ -902,7 +933,7 @@ QWidget *MainWindow::buildNode(const SessionNode &node)
         return result ? makeView(*result) : nullptr;
     }
 
-    auto *splitter = new QSplitter(node.orientation);
+    auto *splitter = new PaneSplitter(node.orientation);
     for (const SessionNode &child : node.children) {
         if (QWidget *childWidget = buildNode(child))
             splitter->addWidget(childWidget);

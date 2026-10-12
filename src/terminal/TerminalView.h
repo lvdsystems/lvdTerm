@@ -16,6 +16,7 @@ class Transport;
 class TerminalSession;
 class HexDumpWidget;
 class QLabel;
+class QVBoxLayout;
 class QLineEdit;
 class QPushButton;
 class QTimer;
@@ -98,6 +99,10 @@ public:
     const std::optional<ConnectionProfile> &sessionSnapshot() const { return m_sessionSnapshot; }
     bool isHexMode() const { return m_hexMode; }
 
+    // The pane the user is working in gets an accent-coloured border,
+    // the others a neutral one - set by MainWindow::updatePaneFrames().
+    void setPaneActive(bool active);
+
 signals:
     // Forwarded from whichever Transport is currently active - stable
     // across a reconnect's transport swap, unlike connecting to the
@@ -109,10 +114,21 @@ signals:
     void contextMenuRequested(const QPoint &globalPos);
 
 protected:
+    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override; // Copy/Paste media keys, see the constructor
 
 private:
+    // Border geometry (see paintEvent()): the padding has to be at least
+    // (radius*(sqrt2-1) + width)/sqrt2 for a square content corner to
+    // clear the border's inner curve - 4 for radius 6, width 2, which is
+    // AppSettings::kMinPanePadding.
+    static constexpr int kBorderRadius = 6;
+    static constexpr int kBorderWidth = 2;
+    bool m_paneActive = false;
+    QVBoxLayout *m_rootLayout = nullptr;
+    void applyPaneAppearance(); // padding + border colours, from AppSettings
+
     void hookTransportSignals();
     void replaceTransport(Transport *newTransport);
     void applyAppearance(); // font + color scheme, from AppSettings

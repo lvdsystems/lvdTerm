@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QResizeEvent>
+#include <QPainter>
 #include <QShortcut>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -54,11 +55,21 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         connect(m_hexView, &HexDumpWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
     }
 
+    // Room for the rounded border paintEvent() draws: the padding (see
+    // AppSettings::panePadding(), never below the minimum that keeps the
+    // content's square corners inside the border's inner curve) is the
+    // space between the border and the content.
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
+    m_rootLayout = layout;
+    applyPaneAppearance();
+    connect(&AppSettings::instance(), &AppSettings::paneAppearanceChanged, this, &TerminalView::applyPaneAppearance);
 
     auto *statusBar = new QWidget(this);
     statusBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed); // never taller than its own contents
+    // Solid window colour: the pane's canvas is the terminal background
+    // (see paintEvent()), so without this the status strip would blend
+    // into it instead of reading as a title bar.
+    statusBar->setAutoFillBackground(true);
     auto *statusLayout = new QHBoxLayout(statusBar);
     statusLayout->setContentsMargins(6, 2, 6, 2);
     m_statusIconLabel = new QLabel(statusBar);
@@ -139,8 +150,12 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         // asks MainWindow for the pane menu (split/copy/paste/close - see
         // MainWindow::showPaneContextMenu()). Paste stays one click away
         // in that menu.
-        connect(m_display, &TerminalDisplay::configureRequest, this,
-                [this](const QPoint &pos) { emit contextMenuRequested(m_display->mapToGlobal(pos)); });
+        connect(m_display, &TerminalDisplay::configureRequest, this, [this](const QPoint &pos) {
+            if (AppSettings::instance().rightClickAction() == AppSettings::RightClickAction::Paste)
+                m_display->pasteClipboard();
+            else
+                emit contextMenuRequested(m_display->mapToGlobal(pos));
+        });
 
         m_session->setTransport(m_transport);
         // See KeyboardProfiles.h/ConnectionProfile::keyboardProfile: an
@@ -188,6 +203,7 @@ void TerminalView::applyAppearance()
 {
     m_display->setVTFont(AppSettings::instance().terminalFont());
     m_display->setColorTable(ColorSchemes::table(AppSettings::instance().colorScheme()));
+    update(); // the canvas behind the content follows the scheme's background
 }
 
 TerminalView::~TerminalView() = default;
@@ -461,6 +477,43 @@ void TerminalView::hideOverlay()
 {
     if (m_overlay)
         m_overlay->hide();
+}
+
+void TerminalView::applyPaneAppearance()
+{
+    const int padding = AppSettings::instance().panePadding();
+    m_rootLayout->setContentsMargins(padding, padding, padding, padding);
+    update(); // the border colours
+}
+
+void TerminalView::setPaneActive(bool active)
+{
+    if (m_paneActive == active)
+        return;
+    m_paneActive = active;
+    update();
+}
+
+void TerminalView::paintEvent(QPaintEvent *)
+{
+    QPainter p(this);
+
+    // The canvas behind the content and its border: the terminal's own
+    // background rather than the app's window colour, so the padding (and,
+    // via PaneSplitter, the gap between panes) doesn't show as a lighter
+    // band between dark terminals.
+    p.fillRect(rect(), ColorSchemes::background(AppSettings::instance().colorScheme()));
+    p.setRenderHint(QPainter::Antialiasing);
+
+    // Accent for the active pane, a quiet outline for the others - so
+    // the edges of every pane read clearly in a split layout.
+    const AppSettings &settings = AppSettings::instance();
+    const QColor color = m_paneActive ? settings.resolvedActivePaneColor(palette()) : settings.resolvedInactivePaneColor(palette());
+    p.setPen(QPen(color, kBorderWidth));
+    p.setBrush(Qt::NoBrush);
+
+    const qreal half = kBorderWidth / 2.0;
+    p.drawRoundedRect(QRectF(rect()).adjusted(half, half, -half, -half), kBorderRadius - half, kBorderRadius - half);
 }
 
 void TerminalView::resizeEvent(QResizeEvent *event)

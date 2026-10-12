@@ -18,6 +18,11 @@ class QPushButton;
 class SftpSession;
 class SftpBrowserView;
 class PathBar;
+class DropOverlay;
+class QDragEnterEvent;
+class QDragLeaveEvent;
+class QDragMoveEvent;
+class QDropEvent;
 
 // Dockable remote file browser for the currently active SSH pane (see
 // MainWindow::updateSftpDockForActiveView()) - a second SFTP session to
@@ -82,6 +87,11 @@ private slots:
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dragLeaveEvent(QDragLeaveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private:
     // Navigates the browser to show `dir`'s contents (dir must be a
@@ -93,12 +103,16 @@ private:
     void updatePathLabel();
     void setStatus(const QString &text);
     void teardownSession();
+    bool dropsAccepted() const; // connected, with a folder to drop into
+    void showDropOverlay(const QString &targetDir); // the "+ Drop to upload" veil, see DropOverlay
+    void hideDropOverlay();
 
     SftpModel *m_model = nullptr;
     SftpBrowserView *m_view = nullptr;
     QWidget *m_toolbar = nullptr; // the labelled buttons, wrapping onto more rows when narrow - enabled/disabled as a unit
     QAction *m_upAction = nullptr;
     PathBar *m_pathBar = nullptr;
+    DropOverlay *m_dropOverlay = nullptr;
     QToolButton *m_copyPathButton = nullptr;
     QLabel *m_statusLabel = nullptr;
     QProgressBar *m_progressBar = nullptr;

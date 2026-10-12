@@ -86,6 +86,7 @@ private:
     void renameTab(int index);
     void toggleSessionLogging();
     void onFocusChanged(QWidget *old, QWidget *now);
+    void updatePaneFrames(); // accent border on the active pane only
     void showTabContextMenu(const QPoint &pos);
     void onCurrentTabChanged(int index); // focuses the new tab's first pane
 

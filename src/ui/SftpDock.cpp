@@ -32,6 +32,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "core/AppSettings.h"
 #include "sftp/SftpSession.h"
 
 namespace
@@ -245,6 +246,77 @@ private:
     QString m_path;
 };
 
+// Shown over the SFTP file list while files are being dragged onto it:
+// an accent-tinted veil with a dashed outline, a big "+" and where the
+// drop will land. Transparent to the mouse, so drag events keep reaching
+// the widgets underneath.
+class DropOverlay : public QWidget
+{
+public:
+    explicit DropOverlay(QWidget *parent) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+    }
+
+    void setTarget(const QString &dir)
+    {
+        if (dir == m_target)
+            return;
+        m_target = dir;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // (The pane-border setting can be "no colour" - transparent - which
+        // must not make this hint invisible.)
+        QColor accent = AppSettings::instance().resolvedActivePaneColor(palette());
+        if (accent.alpha() == 0)
+            accent = palette().color(QPalette::Highlight);
+        QColor veil = accent;
+        veil.setAlpha(46);
+        p.fillRect(rect(), veil);
+
+        QPen dashed(accent, 2, Qt::DashLine);
+        p.setPen(dashed);
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(rect()).adjusted(6, 6, -6, -6), 8, 8);
+
+        // The "+": a filled circle with a white cross.
+        const QPointF center(width() / 2.0, height() / 2.0 - 22);
+        const qreal radius = 28;
+        p.setPen(Qt::NoPen);
+        p.setBrush(accent);
+        p.drawEllipse(center, radius, radius);
+        p.setPen(QPen(Qt::white, 4, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(QPointF(center.x() - 12, center.y()), QPointF(center.x() + 12, center.y()));
+        p.drawLine(QPointF(center.x(), center.y() - 12), QPointF(center.x(), center.y() + 12));
+
+        // Caption: what happens, and into which folder.
+        QFont bold = font();
+        bold.setBold(true);
+        p.setFont(bold);
+        p.setPen(palette().color(QPalette::WindowText));
+        const QRectF textArea(12, center.y() + radius + 10, width() - 24, 22);
+        p.drawText(textArea, Qt::AlignHCenter | Qt::AlignVCenter, QStringLiteral("Drop to upload"));
+
+        if (!m_target.isEmpty()) {
+            p.setFont(font());
+            p.setPen(palette().color(QPalette::PlaceholderText));
+            const QRectF pathArea(12, textArea.bottom(), width() - 24, 20);
+            p.drawText(pathArea, Qt::AlignHCenter | Qt::AlignVCenter, QFontMetrics(font()).elidedText(m_target, Qt::ElideMiddle, static_cast<int>(pathArea.width())));
+        }
+    }
+
+private:
+    QString m_target;
+};
+
 class SftpBrowserView : public QTableView
 {
     Q_OBJECT
@@ -261,6 +333,18 @@ public:
         verticalHeader()->setVisible(false);
     }
 
+    // A session can exist before the connection is up; until then the
+    // model has no root folder, so there's nowhere to drop.
+    bool canAcceptDrops() const { return m_model && m_session && !m_model->rootPath().isEmpty(); }
+
+    // A drop on a folder row goes into that folder, anywhere else into the
+    // folder being shown.
+    QString dropTargetAt(const QPoint &pos) const
+    {
+        const QModelIndex index = indexAt(pos);
+        return (index.isValid() && m_model->isDirectory(index)) ? m_model->pathForIndex(index) : m_model->pathForIndex(rootIndex());
+    }
+
     void setSftpModel(SftpModel *model) { m_model = model; }
     void setSession(SftpSession *session) { m_session = session; }
 
@@ -273,6 +357,10 @@ signals:
     void backRequested();
     void forwardRequested();
     void deleteRequested(); // Delete key - same as the toolbar's Delete (which asks first)
+    // Files are being dragged over the browser (see SftpDock's drop
+    // overlay): where a drop at the cursor would land, and when they leave.
+    void dragTargetChanged(const QString &dir);
+    void dragLeft();
 
 protected:
     void keyPressEvent(QKeyEvent *event) override
@@ -325,25 +413,36 @@ protected:
 
     void dragEnterEvent(QDragEnterEvent *event) override
     {
-        if (event->mimeData()->hasUrls())
+        // Not connected: nothing to upload to, so don't even offer the drop.
+        if (event->mimeData()->hasUrls() && canAcceptDrops()) {
             event->acceptProposedAction();
+            emit dragTargetChanged(dropTargetAt(event->position().toPoint()));
+        }
     }
 
     void dragMoveEvent(QDragMoveEvent *event) override
     {
-        if (event->mimeData()->hasUrls())
+        if (event->mimeData()->hasUrls() && canAcceptDrops()) {
             event->acceptProposedAction();
+            emit dragTargetChanged(dropTargetAt(event->position().toPoint()));
+        }
+    }
+
+    void dragLeaveEvent(QDragLeaveEvent *event) override
+    {
+        QTableView::dragLeaveEvent(event);
+        emit dragLeft();
     }
 
     void dropEvent(QDropEvent *event) override
     {
-        if (!event->mimeData()->hasUrls() || !m_model || !m_session) {
+        emit dragLeft();
+        if (!event->mimeData()->hasUrls() || !canAcceptDrops()) {
             event->ignore();
             return;
         }
 
-        const QModelIndex dropIndex = indexAt(event->position().toPoint());
-        QString targetDir = (dropIndex.isValid() && m_model->isDirectory(dropIndex)) ? m_model->pathForIndex(dropIndex) : m_model->pathForIndex(rootIndex());
+        const QString targetDir = dropTargetAt(event->position().toPoint());
 
         for (const QUrl &url : event->mimeData()->urls()) {
             if (!url.isLocalFile())
@@ -558,6 +657,14 @@ SftpDock::SftpDock(QWidget *parent)
     layout->addWidget(m_progressBar);
     setWidget(container);
 
+    // The hint covers just the file list (header and all) - the part that
+    // actually receives the files - not the toolbar or path bar around it.
+    m_dropOverlay = new DropOverlay(m_view);
+    m_view->installEventFilter(this); // keeps the overlay sized to the list
+    setAcceptDrops(true); // a drop on the toolbar/path bar still uploads into the current folder, with the same hint over the list
+    connect(m_view, &SftpBrowserView::dragTargetChanged, this, [this](const QString &dir) { showDropOverlay(dir); });
+    connect(m_view, &SftpBrowserView::dragLeft, this, &SftpDock::hideDropOverlay);
+
     // No SSH pane is focused yet at startup - see setActiveConnection().
     m_view->setEnabled(false);
     m_toolbar->setEnabled(false);
@@ -662,6 +769,73 @@ void SftpDock::updatePathLabel()
     const QString path = m_model->pathForIndex(m_view->rootIndex());
     m_pathBar->setPath(path);
     m_copyPathButton->setEnabled(!path.isEmpty());
+}
+
+bool SftpDock::dropsAccepted() const
+{
+    // Connected, i.e. the model has a root folder (a session can exist
+    // before that, while still connecting).
+    return m_session && !m_model->rootPath().isEmpty();
+}
+
+void SftpDock::showDropOverlay(const QString &dir)
+{
+    m_dropOverlay->setGeometry(m_view->rect());
+    m_dropOverlay->setTarget(dir);
+    m_dropOverlay->raise();
+    m_dropOverlay->show();
+}
+
+void SftpDock::hideDropOverlay()
+{
+    m_dropOverlay->hide();
+}
+
+bool SftpDock::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_view && event->type() == QEvent::Resize)
+        m_dropOverlay->setGeometry(m_view->rect());
+    return QDockWidget::eventFilter(watched, event);
+}
+
+// Drags that land on the dock outside the file list (toolbar, path bar,
+// margins) - the list itself handles its own, with per-folder targets.
+void SftpDock::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasUrls() && dropsAccepted()) {
+        event->acceptProposedAction();
+        showDropOverlay(m_model->pathForIndex(m_view->rootIndex()));
+    }
+}
+
+void SftpDock::dragMoveEvent(QDragMoveEvent *event)
+{
+    if (event->mimeData()->hasUrls() && dropsAccepted())
+        event->acceptProposedAction();
+}
+
+void SftpDock::dragLeaveEvent(QDragLeaveEvent *event)
+{
+    hideDropOverlay();
+    QDockWidget::dragLeaveEvent(event);
+}
+
+void SftpDock::dropEvent(QDropEvent *event)
+{
+    hideDropOverlay();
+    if (!event->mimeData()->hasUrls() || !dropsAccepted()) {
+        event->ignore();
+        return;
+    }
+
+    const QString targetDir = m_model->pathForIndex(m_view->rootIndex());
+    for (const QUrl &url : event->mimeData()->urls()) {
+        if (url.isLocalFile()) {
+            const QFileInfo info(url.toLocalFile());
+            onUploadRequested(info.absoluteFilePath(), joinRemotePath(targetDir, info.fileName()));
+        }
+    }
+    event->acceptProposedAction();
 }
 
 void SftpDock::keyPressEvent(QKeyEvent *event)

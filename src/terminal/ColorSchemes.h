@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QStringList>
 
 #include "CharacterColor.h"
@@ -20,5 +21,11 @@ QStringList names();
 // Returns TABLE_COLORS (20) entries. Falls back to the first scheme in
 // names() for an unrecognized name.
 const Konsole::ColorEntry *table(const QString &name);
+
+// The scheme's default background - also what the split-pane "canvas"
+// (the gap between panes, and the padding inside each) is filled with, so
+// that space blends into the terminals instead of showing as a lighter
+// stripe of the app's window colour.
+QColor background(const QString &name);
 
 } // namespace ColorSchemes

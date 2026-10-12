@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QColor>
 #include <QFont>
+#include <QPalette>
 #include <QObject>
 #include <QSettings>
 
@@ -30,8 +32,53 @@ public:
     QString defaultKeyboardProfile() const;
     void setDefaultKeyboardProfile(const QString &name);
 
+    // ---- Split-pane look. The colours are "automatic" (invalid QColor)
+    // by default: the theme's accent for the active pane, a lightened
+    // window colour for the others - so they keep following the theme
+    // until the user picks one explicitly.
+    // "No border" is a fully transparent colour (alpha 0, see
+    // isNoColor()): still a valid, saved choice, distinct from invalid
+    // (= automatic).
+    static QColor noColor() { return QColor(0, 0, 0, 0); }
+    static bool isNoColor(const QColor &color) { return color.isValid() && color.alpha() == 0; }
+
+    QColor activePaneColor() const;
+    void setActivePaneColor(const QColor &color); // invalid = back to automatic
+    QColor inactivePaneColor() const;
+    void setInactivePaneColor(const QColor &color);
+    // What the pane painters actually use: the custom colour, else the
+    // automatic one derived from `palette`.
+    QColor resolvedActivePaneColor(const QPalette &palette) const;
+    QColor resolvedInactivePaneColor(const QPalette &palette) const;
+
+    // Pixels between a pane's border and its content. Never below
+    // kMinPanePadding: the border is rounded, and less than this lets the
+    // content's square corners poke out over the curve.
+    static constexpr int kMinPanePadding = 4;
+    static constexpr int kMaxPanePadding = 24;
+    int panePadding() const;
+    void setPanePadding(int pixels);
+
+    // The draggable gap between split panes.
+    static constexpr int kMinPaneGap = 1;
+    static constexpr int kMaxPaneGap = 24;
+    int paneGap() const;
+    void setPaneGap(int pixels);
+
+    // What right-clicking inside a terminal does: open the pane menu
+    // (split/close/copy/paste), or paste straight away (the original
+    // behaviour).
+    enum class RightClickAction
+    {
+        ShowMenu,
+        Paste,
+    };
+    RightClickAction rightClickAction() const;
+    void setRightClickAction(RightClickAction action);
+
 signals:
     void themeChanged(const QString &theme);
+    void paneAppearanceChanged(); // pane colours, padding and/or gap
     void terminalAppearanceChanged(); // color scheme and/or font
 
 private:

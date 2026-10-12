@@ -9,6 +9,11 @@ constexpr auto kColorSchemeKey = "appearance/colorScheme";
 constexpr auto kFontFamilyKey = "appearance/fontFamily";
 constexpr auto kFontPointSizeKey = "appearance/fontPointSize";
 constexpr auto kKeyboardProfileKey = "terminal/keyboardProfile";
+constexpr auto kActivePaneColorKey = "panes/activeColor";
+constexpr auto kInactivePaneColorKey = "panes/inactiveColor";
+constexpr auto kPanePaddingKey = "panes/padding";
+constexpr auto kPaneGapKey = "panes/gap";
+constexpr auto kRightClickKey = "mouse/rightClick";
 
 constexpr auto kDefaultTheme = "Dark";
 constexpr auto kDefaultColorScheme = "Dark";
@@ -104,4 +109,74 @@ void AppSettings::setDefaultKeyboardProfile(const QString &name)
     // setKeyboardProfile()), so no live-apply signal is needed, unlike
     // theme/colorScheme/terminalFont.
     m_settings.setValue(QLatin1String(kKeyboardProfileKey), name);
+}
+
+QColor AppSettings::activePaneColor() const
+{
+    return QColor(m_settings.value(QLatin1String(kActivePaneColorKey)).toString()); // invalid if unset/empty
+}
+
+void AppSettings::setActivePaneColor(const QColor &color)
+{
+    m_settings.setValue(QLatin1String(kActivePaneColorKey), color.isValid() ? color.name(QColor::HexArgb) : QString());
+    emit paneAppearanceChanged();
+}
+
+QColor AppSettings::inactivePaneColor() const
+{
+    return QColor(m_settings.value(QLatin1String(kInactivePaneColorKey)).toString());
+}
+
+void AppSettings::setInactivePaneColor(const QColor &color)
+{
+    m_settings.setValue(QLatin1String(kInactivePaneColorKey), color.isValid() ? color.name(QColor::HexArgb) : QString());
+    emit paneAppearanceChanged();
+}
+
+QColor AppSettings::resolvedActivePaneColor(const QPalette &palette) const
+{
+    const QColor custom = activePaneColor();
+    return custom.isValid() ? custom : palette.color(QPalette::Highlight);
+}
+
+QColor AppSettings::resolvedInactivePaneColor(const QPalette &palette) const
+{
+    // Window lightened rather than QPalette::Mid, which is near-white in
+    // the dark theme.
+    const QColor custom = inactivePaneColor();
+    return custom.isValid() ? custom : palette.color(QPalette::Window).lighter(170);
+}
+
+int AppSettings::panePadding() const
+{
+    return qBound(kMinPanePadding, m_settings.value(QLatin1String(kPanePaddingKey), kMinPanePadding).toInt(), kMaxPanePadding);
+}
+
+void AppSettings::setPanePadding(int pixels)
+{
+    m_settings.setValue(QLatin1String(kPanePaddingKey), qBound(kMinPanePadding, pixels, kMaxPanePadding));
+    emit paneAppearanceChanged();
+}
+
+int AppSettings::paneGap() const
+{
+    return qBound(kMinPaneGap, m_settings.value(QLatin1String(kPaneGapKey), 8).toInt(), kMaxPaneGap);
+}
+
+void AppSettings::setPaneGap(int pixels)
+{
+    m_settings.setValue(QLatin1String(kPaneGapKey), qBound(kMinPaneGap, pixels, kMaxPaneGap));
+    emit paneAppearanceChanged();
+}
+
+AppSettings::RightClickAction AppSettings::rightClickAction() const
+{
+    return m_settings.value(QLatin1String(kRightClickKey), QStringLiteral("menu")).toString() == QStringLiteral("paste") ? RightClickAction::Paste
+                                                                                                                         : RightClickAction::ShowMenu;
+}
+
+void AppSettings::setRightClickAction(RightClickAction action)
+{
+    // Read fresh on every right-click, so no signal is needed.
+    m_settings.setValue(QLatin1String(kRightClickKey), action == RightClickAction::Paste ? QStringLiteral("paste") : QStringLiteral("menu"));
 }

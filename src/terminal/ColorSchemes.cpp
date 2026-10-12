@@ -76,3 +76,8 @@ const Konsole::ColorEntry *ColorSchemes::table(const QString &name)
     }
     return kSchemes[0].table;
 }
+
+QColor ColorSchemes::background(const QString &name)
+{
+    return table(name)[1].color; // [1] = default background, see ColorSchemes.h
+}
