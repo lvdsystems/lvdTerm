@@ -130,6 +130,10 @@ private:
     static constexpr int kBorderWidth = 2;
     bool m_paneActive = false;
     QVBoxLayout *m_rootLayout = nullptr;
+    QWidget *m_toast = nullptr; // "Copied to clipboard", created on first use - see showCopiedToast()
+    QTimer *m_toastTimer = nullptr;
+    void showCopiedToast();
+    void positionToast();
     void applyPaneAppearance(); // padding + border colours, from AppSettings
 
     void hookTransportSignals();

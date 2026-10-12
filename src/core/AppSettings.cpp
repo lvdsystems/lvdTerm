@@ -14,6 +14,7 @@ constexpr auto kInactivePaneColorKey = "panes/inactiveColor";
 constexpr auto kPanePaddingKey = "panes/padding";
 constexpr auto kPaneGapKey = "panes/gap";
 constexpr auto kRightClickKey = "mouse/rightClick";
+constexpr auto kCopyOnSelectKey = "mouse/copyOnSelect";
 
 constexpr auto kDefaultTheme = "Dark";
 constexpr auto kDefaultColorScheme = "Dark";
@@ -179,4 +180,14 @@ void AppSettings::setRightClickAction(RightClickAction action)
 {
     // Read fresh on every right-click, so no signal is needed.
     m_settings.setValue(QLatin1String(kRightClickKey), action == RightClickAction::Paste ? QStringLiteral("paste") : QStringLiteral("menu"));
+}
+
+bool AppSettings::copyOnSelect() const
+{
+    return m_settings.value(QLatin1String(kCopyOnSelectKey), false).toBool();
+}
+
+void AppSettings::setCopyOnSelect(bool enabled)
+{
+    m_settings.setValue(QLatin1String(kCopyOnSelectKey), enabled);
 }

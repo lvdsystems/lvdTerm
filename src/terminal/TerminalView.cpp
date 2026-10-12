@@ -27,6 +27,46 @@
 #include "core/Transport.h"
 #include "ColorSchemes.h"
 
+namespace
+{
+// The small "Copied to clipboard" pill that flashes at a pane's bottom
+// right after a copy. Transparent to the mouse so it never gets in the
+// way of the terminal underneath.
+class CopiedToast : public QWidget
+{
+public:
+    explicit CopiedToast(QWidget *parent) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+    }
+
+    QSize sizeHint() const override
+    {
+        const QFontMetrics fm(font());
+        return QSize(fm.horizontalAdvance(text()) + 2 * kPaddingX, fm.height() + 2 * kPaddingY);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QColor background(20, 20, 20, 225);
+        p.setPen(Qt::NoPen);
+        p.setBrush(background);
+        p.drawRoundedRect(rect(), 6, 6);
+        p.setPen(Qt::white);
+        p.drawText(rect(), Qt::AlignCenter, text());
+    }
+
+private:
+    static QString text() { return QStringLiteral("\u2713 Copied to clipboard"); } // check mark
+    static constexpr int kPaddingX = 12;
+    static constexpr int kPaddingY = 6;
+};
+} // namespace
+
 TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std::optional<SshConnectionSettings> sshSettings,
                            std::optional<ConnectionProfile> sessionSnapshot, QWidget *parent)
     : QWidget(parent)
@@ -132,14 +172,17 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         // once the mouse is released - TerminalDisplay.cpp's mouseReleaseEvent/
         // mouseMoveEvent/mouseTripleClickEvent), so gate the frequent signal on
         // it and instead do the actual copy once, when the selection settles.
+        //
+        // Only when "copy on select" is enabled (Settings; off by default) -
+        // otherwise a selection is copied explicitly (Copy, the pane menu).
         connect(m_display, &TerminalDisplay::isBusySelecting, this, [this](bool busy) {
             m_selectionBusy = busy;
-            if (!busy)
-                m_display->copyClipboard(); // no-op if selection ended up empty (e.g. a plain click)
+            if (!busy && AppSettings::instance().copyOnSelect())
+                copySelection(); // no-op if selection ended up empty (e.g. a plain click)
         });
         connect(m_display, &TerminalDisplay::copyAvailable, this, [this](bool available) {
-            if (available && !m_selectionBusy)
-                m_display->copyClipboard();
+            if (available && !m_selectionBusy && AppSettings::instance().copyOnSelect())
+                copySelection();
         });
 
         // Right-click menu: configureRequest() is TerminalDisplay's own
@@ -213,7 +256,37 @@ void TerminalView::connectToHost()
 
 void TerminalView::copySelection()
 {
+    // Nothing selected: copyClipboard() would do nothing, and so should the
+    // "Copied" feedback.
+    Konsole::ScreenWindow *window = m_display->screenWindow();
+    if (!window || window->selectedText(true).isEmpty())
+        return;
+
     m_display->copyClipboard();
+    showCopiedToast();
+}
+
+void TerminalView::showCopiedToast()
+{
+    if (!m_toast) {
+        m_toast = new CopiedToast(this);
+        m_toastTimer = new QTimer(this);
+        m_toastTimer->setSingleShot(true);
+        connect(m_toastTimer, &QTimer::timeout, m_toast, &QWidget::hide);
+    }
+
+    m_toast->adjustSize();
+    positionToast();
+    m_toast->raise();
+    m_toast->show();
+    m_toastTimer->start(1500);
+}
+
+void TerminalView::positionToast()
+{
+    constexpr int kMargin = 14;
+    // Bottom-right of the pane, clear of its border and the scroll bar.
+    m_toast->move(width() - m_toast->width() - kMargin - 12, height() - m_toast->height() - kMargin);
 }
 
 void TerminalView::pasteFromClipboard()
@@ -518,6 +591,8 @@ void TerminalView::paintEvent(QPaintEvent *)
 void TerminalView::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
+    if (m_toast && m_toast->isVisible())
+        positionToast();
     if (m_overlay)
         m_overlay->setGeometry(rect());
 }

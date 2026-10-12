@@ -76,6 +76,12 @@ public:
     RightClickAction rightClickAction() const;
     void setRightClickAction(RightClickAction action);
 
+    // Copy to the clipboard as soon as a text selection is made, instead
+    // of needing Copy. Off by default. Read when a selection settles, so
+    // no change signal.
+    bool copyOnSelect() const;
+    void setCopyOnSelect(bool enabled);
+
 signals:
     void themeChanged(const QString &theme);
     void paneAppearanceChanged(); // pane colours, padding and/or gap

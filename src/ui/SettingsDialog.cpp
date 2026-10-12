@@ -48,6 +48,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     , m_paddingSpin(new QSpinBox(this))
     , m_gapSpin(new QSpinBox(this))
     , m_rightClickCombo(new QComboBox(this))
+    , m_copyOnSelectCombo(new QComboBox(this))
 {
     setWindowTitle(QStringLiteral("Settings"));
 
@@ -97,6 +98,13 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     m_rightClickCombo->setCurrentIndex(qMax(0, m_rightClickCombo->findData(static_cast<int>(AppSettings::instance().rightClickAction()))));
     connect(m_rightClickCombo, &QComboBox::currentIndexChanged, this, &SettingsDialog::applyRightClickAction);
 
+    // A labelled Disabled/Enabled choice, like the other rows (data: bool).
+    m_copyOnSelectCombo->addItem(QStringLiteral("Disabled"), false);
+    m_copyOnSelectCombo->addItem(QStringLiteral("Enabled - copy as soon as text is selected"), true);
+    m_copyOnSelectCombo->setCurrentIndex(AppSettings::instance().copyOnSelect() ? 1 : 0);
+    connect(m_copyOnSelectCombo, &QComboBox::currentIndexChanged, this,
+            [this] { AppSettings::instance().setCopyOnSelect(m_copyOnSelectCombo->currentData().toBool()); });
+
     refreshColorButtons();
 
     auto *form = new QFormLayout();
@@ -116,6 +124,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     auto *mouseHeading = new QLabel(QStringLiteral("<b>Mouse</b>"), this);
     form->addRow(mouseHeading);
     form->addRow(QStringLiteral("Right-click in a terminal:"), m_rightClickCombo);
+    form->addRow(QStringLiteral("Copy on select:"), m_copyOnSelectCombo);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::accept);
