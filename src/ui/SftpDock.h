@@ -15,7 +15,6 @@ class QLabel;
 class QProgressBar;
 class QToolButton;
 class QPushButton;
-class QToolBar;
 class SftpSession;
 class SftpBrowserView;
 class PathBar;
@@ -97,7 +96,7 @@ private:
 
     SftpModel *m_model = nullptr;
     SftpBrowserView *m_view = nullptr;
-    QWidget *m_toolbar = nullptr; // the two rows of labelled buttons (QToolBars) - enabled/disabled as a unit
+    QWidget *m_toolbar = nullptr; // the labelled buttons, wrapping onto more rows when narrow - enabled/disabled as a unit
     QAction *m_upAction = nullptr;
     PathBar *m_pathBar = nullptr;
     QToolButton *m_copyPathButton = nullptr;

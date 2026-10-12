@@ -15,6 +15,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
@@ -28,7 +29,6 @@
 #include <QStyle>
 #include <QTableView>
 #include <QTimer>
-#include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -69,6 +69,67 @@ QIcon makeUpLevelIcon()
 // files dragged in from Explorer (upload). Defined here rather than in
 // its own header since nothing outside this file needs it; AUTOMOC still
 // picks it up via the #include "SftpDock.moc" at the end of this file.
+// Lays children out left to right and wraps onto further rows when the
+// width runs out (Qt's own "Flow Layout" example, trimmed). A QToolBar
+// instead hides whatever doesn't fit behind an overflow chevron - which,
+// in a narrow dock, left only the first button or two visible.
+class FlowLayout : public QLayout
+{
+public:
+    explicit FlowLayout(QWidget *parent, int spacing = 2) : QLayout(parent), m_spacing(spacing) {}
+    ~FlowLayout() override { qDeleteAll(m_items); }
+
+    void addItem(QLayoutItem *item) override { m_items.append(item); }
+    int count() const override { return static_cast<int>(m_items.size()); }
+    QLayoutItem *itemAt(int index) const override { return m_items.value(index, nullptr); }
+    QLayoutItem *takeAt(int index) override { return index >= 0 && index < m_items.size() ? m_items.takeAt(index) : nullptr; }
+
+    Qt::Orientations expandingDirections() const override { return {}; }
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int width) const override { return doLayout(QRect(0, 0, width, 0), true); }
+    void setGeometry(const QRect &rect) override
+    {
+        QLayout::setGeometry(rect);
+        doLayout(rect, false);
+    }
+    QSize sizeHint() const override { return minimumSize(); }
+    QSize minimumSize() const override
+    {
+        QSize size;
+        for (const QLayoutItem *item : m_items)
+            size = size.expandedTo(item->minimumSize());
+        const QMargins m = contentsMargins();
+        return size + QSize(m.left() + m.right(), m.top() + m.bottom());
+    }
+
+private:
+    int doLayout(const QRect &rect, bool testOnly) const
+    {
+        const QMargins m = contentsMargins();
+        const QRect area = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom());
+        int x = area.x();
+        int y = area.y();
+        int rowHeight = 0;
+
+        for (QLayoutItem *item : m_items) {
+            const QSize hint = item->sizeHint();
+            if (x > area.x() && x + hint.width() > area.right() + 1) { // wrap
+                x = area.x();
+                y += rowHeight + m_spacing;
+                rowHeight = 0;
+            }
+            if (!testOnly)
+                item->setGeometry(QRect(QPoint(x, y), hint));
+            x += hint.width() + m_spacing;
+            rowHeight = qMax(rowHeight, hint.height());
+        }
+        return y + rowHeight - rect.y() + m.bottom();
+    }
+
+    QList<QLayoutItem *> m_items;
+    int m_spacing;
+};
+
 // Clickable breadcrumb for the current remote path: "/ > home > lvd >
 // Pictures", every folder except the current one a flat button that
 // highlights on hover (click = go there), plus a double-click anywhere on
@@ -436,46 +497,39 @@ SftpDock::SftpDock(QWidget *parent)
     connect(m_pathBar, &PathBar::segmentClicked, this, &SftpDock::navigateToPath);
     connect(m_pathBar, &PathBar::copyRequested, this, &SftpDock::copyPath);
 
-    // Two rows of labelled buttons rather than one row of bare icons -
-    // the standard icons alone don't say which of "upload"/"download"/
-    // "new folder" is which, and one row of icon+text doesn't fit a
-    // narrow dock (the overflow would hide buttons behind a chevron).
-    // The full "..." labels stay as tooltips.
+    // Labelled buttons (the standard icons alone don't say which of
+    // "upload"/"download"/"new folder" is which; the full "..." text stays
+    // as the tooltip) in a wrapping flow, so a narrow dock gets more rows
+    // rather than losing buttons.
     m_toolbar = new QWidget(this);
-    auto *toolbarLayout = new QVBoxLayout(m_toolbar);
-    toolbarLayout->setContentsMargins(0, 0, 0, 0);
-    toolbarLayout->setSpacing(0);
+    auto *flow = new FlowLayout(m_toolbar);
+    flow->setContentsMargins(4, 2, 4, 2);
 
-    auto makeToolbar = [&] {
-        auto *bar = new QToolBar(m_toolbar);
-        bar->setIconSize(QSize(16, 16));
-        bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        toolbarLayout->addWidget(bar);
-        return bar;
-    };
-    QToolBar *navBar = makeToolbar(); // Up / Upload / Upload Folder / Download
-    QToolBar *fileBar = makeToolbar(); // New Folder / Rename / Delete / Refresh
-
-    auto addToolAction = [&](QToolBar *bar, const QIcon &icon, const QString &label, const QString &tooltip, auto slot) {
-        QAction *action = bar->addAction(icon, label);
+    auto addToolAction = [&](const QIcon &icon, const QString &label, const QString &tooltip, auto slot) {
+        auto *action = new QAction(icon, label, this);
         action->setToolTip(tooltip);
         connect(action, &QAction::triggered, this, slot);
+
+        auto *button = new QToolButton(m_toolbar);
+        button->setDefaultAction(action); // enabled state and tooltip follow the action
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setIconSize(QSize(16, 16));
+        button->setAutoRaise(true);
+        flow->addWidget(button);
         return action;
     };
     auto stdIcon = [this](QStyle::StandardPixmap pixmap) { return style()->standardIcon(pixmap); };
 
-    m_upAction = addToolAction(navBar, makeUpLevelIcon(), QStringLiteral("Up"), QStringLiteral("Up"), &SftpDock::goUp);
+    m_upAction = addToolAction(makeUpLevelIcon(), QStringLiteral("Up"), QStringLiteral("Up"), &SftpDock::goUp);
     m_upAction->setEnabled(false);
-    navBar->addSeparator();
-    addToolAction(navBar, stdIcon(QStyle::SP_ArrowUp), QStringLiteral("Upload"), QStringLiteral("Upload..."), &SftpDock::uploadFiles);
-    addToolAction(navBar, stdIcon(QStyle::SP_DirOpenIcon), QStringLiteral("Upload Folder"), QStringLiteral("Upload Folder..."), &SftpDock::uploadFolder);
-    addToolAction(navBar, stdIcon(QStyle::SP_ArrowDown), QStringLiteral("Download"), QStringLiteral("Download..."), &SftpDock::downloadSelected);
-
-    addToolAction(fileBar, stdIcon(QStyle::SP_FileDialogNewFolder), QStringLiteral("New Folder"), QStringLiteral("New Folder..."), &SftpDock::newFolder);
+    addToolAction(stdIcon(QStyle::SP_ArrowUp), QStringLiteral("Upload"), QStringLiteral("Upload..."), &SftpDock::uploadFiles);
+    addToolAction(stdIcon(QStyle::SP_DirOpenIcon), QStringLiteral("Upload Folder"), QStringLiteral("Upload Folder..."), &SftpDock::uploadFolder);
+    addToolAction(stdIcon(QStyle::SP_ArrowDown), QStringLiteral("Download"), QStringLiteral("Download..."), &SftpDock::downloadSelected);
+    addToolAction(stdIcon(QStyle::SP_FileDialogNewFolder), QStringLiteral("New Folder"), QStringLiteral("New Folder..."), &SftpDock::newFolder);
     // No good standard icon for rename - the text label alone, no icon.
-    addToolAction(fileBar, QIcon(), QStringLiteral("Rename"), QStringLiteral("Rename..."), &SftpDock::renameSelected);
-    addToolAction(fileBar, stdIcon(QStyle::SP_TrashIcon), QStringLiteral("Delete"), QStringLiteral("Delete"), &SftpDock::deleteSelected);
-    addToolAction(fileBar, stdIcon(QStyle::SP_BrowserReload), QStringLiteral("Refresh"), QStringLiteral("Refresh"), &SftpDock::refresh);
+    addToolAction(QIcon(), QStringLiteral("Rename"), QStringLiteral("Rename..."), &SftpDock::renameSelected);
+    addToolAction(stdIcon(QStyle::SP_TrashIcon), QStringLiteral("Delete"), QStringLiteral("Delete"), &SftpDock::deleteSelected);
+    addToolAction(stdIcon(QStyle::SP_BrowserReload), QStringLiteral("Refresh"), QStringLiteral("Refresh"), &SftpDock::refresh);
 
     auto *pathBar = new QWidget(this);
     auto *pathLayout = new QHBoxLayout(pathBar);
