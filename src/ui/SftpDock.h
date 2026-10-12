@@ -13,10 +13,12 @@ class QAction;
 class QKeyEvent;
 class QLabel;
 class QProgressBar;
+class QToolButton;
 class QPushButton;
 class QToolBar;
 class SftpSession;
 class SftpBrowserView;
+class PathBar;
 
 // Dockable remote file browser for the currently active SSH pane (see
 // MainWindow::updateSftpDockForActiveView()) - a second SFTP session to
@@ -67,6 +69,8 @@ private slots:
     void showItemContextMenu(const QPoint &pos); // right-click on a file/folder: Download/Rename/Delete
 
     void goUp();
+    void copyPath(const QString &path); // to the clipboard, with a status-line confirmation
+    void navigateToPath(const QString &path); // a breadcrumb segment was clicked
     void goBack(); // previous folder in this browsing session's history
     void goForward();
     void uploadFiles();
@@ -93,10 +97,10 @@ private:
 
     SftpModel *m_model = nullptr;
     SftpBrowserView *m_view = nullptr;
-    QToolBar *m_toolbar = nullptr;
+    QWidget *m_toolbar = nullptr; // the two rows of labelled buttons (QToolBars) - enabled/disabled as a unit
     QAction *m_upAction = nullptr;
-    QPushButton *m_dotDotButton = nullptr; // ".." row above the listing - same target as m_upAction, see the constructor
-    QLabel *m_pathLabel = nullptr;
+    PathBar *m_pathBar = nullptr;
+    QToolButton *m_copyPathButton = nullptr;
     QLabel *m_statusLabel = nullptr;
     QProgressBar *m_progressBar = nullptr;
 

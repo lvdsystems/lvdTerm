@@ -9,6 +9,7 @@
 #include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QClipboard>
 #include <QGuiApplication>
 #include <QHeaderView>
 #include <QInputDialog>
@@ -22,9 +23,13 @@
 #include <QPainter>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QStyle>
 #include <QTableView>
+#include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include "sftp/SftpSession.h"
@@ -64,6 +69,121 @@ QIcon makeUpLevelIcon()
 // files dragged in from Explorer (upload). Defined here rather than in
 // its own header since nothing outside this file needs it; AUTOMOC still
 // picks it up via the #include "SftpDock.moc" at the end of this file.
+// Clickable breadcrumb for the current remote path: "/ > home > lvd >
+// Pictures", every folder except the current one a flat button that
+// highlights on hover (click = go there), plus a double-click anywhere on
+// the bar to copy the full path. Knows nothing about SFTP - it only
+// reports which path was clicked/copied.
+class PathBar : public QScrollArea
+{
+    Q_OBJECT
+
+public:
+    explicit PathBar(QWidget *parent = nullptr) : QScrollArea(parent), m_content(new QWidget)
+    {
+        setWidgetResizable(true);
+        setFrameShape(QFrame::NoFrame);
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setFixedHeight(26);
+        setWidget(m_content);
+
+        m_layout = new QHBoxLayout(m_content);
+        m_layout->setContentsMargins(4, 0, 4, 0);
+        m_layout->setSpacing(0);
+
+        // palette()-based so it follows the light/dark theme.
+        m_content->setStyleSheet(QStringLiteral(
+            "QToolButton { border: none; border-radius: 3px; padding: 2px 5px; }"
+            "QToolButton:hover:enabled { background-color: palette(highlight); color: palette(highlighted-text); }"
+            "QToolButton:disabled { color: palette(text); font-weight: bold; }"
+            "QLabel { color: palette(mid); }"));
+    }
+
+    void setPath(const QString &path)
+    {
+        m_path = path;
+
+        // Rebuilt from scratch on every change - a path has a handful of
+        // segments, not worth diffing. deleteLater(): this can run from
+        // inside one of the old buttons' own clicked() signal.
+        while (QLayoutItem *item = m_layout->takeAt(0)) {
+            if (QWidget *w = item->widget()) {
+                w->hide();
+                w->deleteLater();
+            }
+            delete item;
+        }
+
+        if (path.isEmpty()) {
+            m_layout->addWidget(new QLabel(QStringLiteral("(not connected)"), m_content));
+            m_layout->addStretch(1);
+            return;
+        }
+
+        QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+        QString accumulated;
+        addSegment(QStringLiteral("/"), QStringLiteral("/"), parts.isEmpty());
+        for (int i = 0; i < parts.size(); ++i) {
+            accumulated += QLatin1Char('/') + parts.at(i);
+            m_layout->addWidget(new QLabel(QStringLiteral("\u203A"), m_content)); // single right-pointing angle quote
+            addSegment(parts.at(i), accumulated, i == parts.size() - 1);
+        }
+        m_layout->addStretch(1);
+
+        // Long paths: keep the tail (where the current folder is) in view.
+        QTimer::singleShot(0, this, [this] { horizontalScrollBar()->setValue(horizontalScrollBar()->maximum()); });
+    }
+
+signals:
+    void segmentClicked(const QString &path);
+    void copyRequested(const QString &path);
+
+protected:
+    void mouseDoubleClickEvent(QMouseEvent *event) override
+    {
+        if (!m_path.isEmpty())
+            emit copyRequested(m_path);
+        event->accept();
+    }
+
+    // Buttons swallow the double-click (they treat it as another press),
+    // so catch it here. After the first click of a double-click on a
+    // folder, the bar has already been rebuilt to end at that folder -
+    // so what gets copied is the folder that was double-clicked.
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::MouseButtonDblClick && !m_path.isEmpty()) {
+            emit copyRequested(m_path);
+            return true;
+        }
+        return QScrollArea::eventFilter(watched, event);
+    }
+
+private:
+    void addSegment(const QString &label, const QString &fullPath, bool isCurrent)
+    {
+        auto *button = new QToolButton(m_content);
+        button->setText(label);
+        button->setAutoRaise(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->installEventFilter(this);
+        if (isCurrent) {
+            button->setEnabled(false); // styled as the bold "you are here" segment
+            button->setToolTip(QStringLiteral("%1\nDouble-click to copy the path").arg(fullPath));
+        } else {
+            button->setCursor(Qt::PointingHandCursor);
+            button->setToolTip(QStringLiteral("Go to %1\nDouble-click to copy the path").arg(fullPath));
+            connect(button, &QToolButton::clicked, this, [this, fullPath] { emit segmentClicked(fullPath); });
+        }
+        m_layout->addWidget(button);
+    }
+
+    QWidget *m_content = nullptr;
+    QHBoxLayout *m_layout = nullptr;
+    QString m_path;
+};
+
 class SftpBrowserView : public QTableView
 {
     Q_OBJECT
@@ -91,6 +211,7 @@ signals:
     // what Logitech-style button remapping sends), or Alt+Left/Right.
     void backRequested();
     void forwardRequested();
+    void deleteRequested(); // Delete key - same as the toolbar's Delete (which asks first)
 
 protected:
     void keyPressEvent(QKeyEvent *event) override
@@ -101,6 +222,9 @@ protected:
             event->accept();
         } else if (event->key() == Qt::Key_Forward || (alt && event->key() == Qt::Key_Right)) {
             emit forwardRequested();
+            event->accept();
+        } else if (event->key() == Qt::Key_Delete && event->modifiers() == Qt::NoModifier) {
+            emit deleteRequested();
             event->accept();
         } else {
             QTableView::keyPressEvent(event);
@@ -274,7 +398,7 @@ SftpDock::SftpDock(QWidget *parent)
     : QDockWidget(QStringLiteral("SFTP"), parent)
     , m_model(new SftpModel(this))
     , m_view(new SftpBrowserView(this))
-    , m_pathLabel(new QLabel(this))
+    , m_pathBar(new PathBar(this))
     , m_statusLabel(new QLabel(QStringLiteral("Not connected"), this))
     , m_progressBar(new QProgressBar(this))
 {
@@ -287,6 +411,7 @@ SftpDock::SftpDock(QWidget *parent)
     connect(m_view, &QTableView::customContextMenuRequested, this, &SftpDock::showItemContextMenu);
     connect(m_view, &SftpBrowserView::backRequested, this, &SftpDock::goBack);
     connect(m_view, &SftpBrowserView::forwardRequested, this, &SftpDock::goForward);
+    connect(m_view, &SftpBrowserView::deleteRequested, this, &SftpDock::deleteSelected);
     connect(m_view, &SftpBrowserView::dragOutTooLarge, this,
             [this] { setStatus(QStringLiteral("Too large to drag out directly - use \"Download...\" instead")); });
 
@@ -308,72 +433,72 @@ SftpDock::SftpDock(QWidget *parent)
     m_progressBar->setVisible(false);
     m_progressBar->setRange(0, 100);
 
-    m_pathLabel->setStyleSheet(QStringLiteral("color: palette(mid);"));
-    m_pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse); // path is worth being able to copy
+    connect(m_pathBar, &PathBar::segmentClicked, this, &SftpDock::navigateToPath);
+    connect(m_pathBar, &PathBar::copyRequested, this, &SftpDock::copyPath);
 
-    m_toolbar = new QToolBar(this);
-    auto *toolbar = m_toolbar;
-    toolbar->setIconSize(QSize(16, 16));
-    toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    // Two rows of labelled buttons rather than one row of bare icons -
+    // the standard icons alone don't say which of "upload"/"download"/
+    // "new folder" is which, and one row of icon+text doesn't fit a
+    // narrow dock (the overflow would hide buttons behind a chevron).
+    // The full "..." labels stay as tooltips.
+    m_toolbar = new QWidget(this);
+    auto *toolbarLayout = new QVBoxLayout(m_toolbar);
+    toolbarLayout->setContentsMargins(0, 0, 0, 0);
+    toolbarLayout->setSpacing(0);
 
-    // Icons over labels (QStyle::standardIcon - no custom art needed), with
-    // the original label kept as a tooltip so nothing is less discoverable.
-    auto addToolAction = [&](QStyle::StandardPixmap icon, const QString &tooltip, auto slot) {
-        QAction *action = toolbar->addAction(style()->standardIcon(icon), QString());
+    auto makeToolbar = [&] {
+        auto *bar = new QToolBar(m_toolbar);
+        bar->setIconSize(QSize(16, 16));
+        bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        toolbarLayout->addWidget(bar);
+        return bar;
+    };
+    QToolBar *navBar = makeToolbar(); // Up / Upload / Upload Folder / Download
+    QToolBar *fileBar = makeToolbar(); // New Folder / Rename / Delete / Refresh
+
+    auto addToolAction = [&](QToolBar *bar, const QIcon &icon, const QString &label, const QString &tooltip, auto slot) {
+        QAction *action = bar->addAction(icon, label);
         action->setToolTip(tooltip);
         connect(action, &QAction::triggered, this, slot);
         return action;
     };
+    auto stdIcon = [this](QStyle::StandardPixmap pixmap) { return style()->standardIcon(pixmap); };
 
-    m_upAction = toolbar->addAction(makeUpLevelIcon(), QString());
-    m_upAction->setToolTip(QStringLiteral("Up"));
-    connect(m_upAction, &QAction::triggered, this, &SftpDock::goUp);
+    m_upAction = addToolAction(navBar, makeUpLevelIcon(), QStringLiteral("Up"), QStringLiteral("Up"), &SftpDock::goUp);
     m_upAction->setEnabled(false);
-    toolbar->addSeparator();
-    addToolAction(QStyle::SP_ArrowUp, QStringLiteral("Upload..."), &SftpDock::uploadFiles);
-    addToolAction(QStyle::SP_DirOpenIcon, QStringLiteral("Upload Folder..."), &SftpDock::uploadFolder);
-    addToolAction(QStyle::SP_ArrowDown, QStringLiteral("Download..."), &SftpDock::downloadSelected);
-    addToolAction(QStyle::SP_FileDialogNewFolder, QStringLiteral("New Folder..."), &SftpDock::newFolder);
-    // No good standard icon for rename - a text label stays clearer than a
-    // misleading icon.
-    connect(toolbar->addAction(QStringLiteral("Rename...")), &QAction::triggered, this, &SftpDock::renameSelected);
-    addToolAction(QStyle::SP_TrashIcon, QStringLiteral("Delete"), &SftpDock::deleteSelected);
-    addToolAction(QStyle::SP_BrowserReload, QStringLiteral("Refresh"), &SftpDock::refresh);
+    navBar->addSeparator();
+    addToolAction(navBar, stdIcon(QStyle::SP_ArrowUp), QStringLiteral("Upload"), QStringLiteral("Upload..."), &SftpDock::uploadFiles);
+    addToolAction(navBar, stdIcon(QStyle::SP_DirOpenIcon), QStringLiteral("Upload Folder"), QStringLiteral("Upload Folder..."), &SftpDock::uploadFolder);
+    addToolAction(navBar, stdIcon(QStyle::SP_ArrowDown), QStringLiteral("Download"), QStringLiteral("Download..."), &SftpDock::downloadSelected);
+
+    addToolAction(fileBar, stdIcon(QStyle::SP_FileDialogNewFolder), QStringLiteral("New Folder"), QStringLiteral("New Folder..."), &SftpDock::newFolder);
+    // No good standard icon for rename - the text label alone, no icon.
+    addToolAction(fileBar, QIcon(), QStringLiteral("Rename"), QStringLiteral("Rename..."), &SftpDock::renameSelected);
+    addToolAction(fileBar, stdIcon(QStyle::SP_TrashIcon), QStringLiteral("Delete"), QStringLiteral("Delete"), &SftpDock::deleteSelected);
+    addToolAction(fileBar, stdIcon(QStyle::SP_BrowserReload), QStringLiteral("Refresh"), QStringLiteral("Refresh"), &SftpDock::refresh);
 
     auto *pathBar = new QWidget(this);
     auto *pathLayout = new QHBoxLayout(pathBar);
-    pathLayout->setContentsMargins(6, 2, 6, 2);
-    pathLayout->addWidget(m_pathLabel, 1);
+    pathLayout->setContentsMargins(2, 0, 2, 0);
+    pathLayout->addWidget(m_pathBar, 1);
 
-    // A ".." entry directly above the listing, styled to read as part of
-    // it (same icon size, left-aligned like a row) - requested directly
-    // as an additional, more discoverable way to go up than the toolbar
-    // button alone. A real QPushButton rather than an actual model row:
-    // making SftpModel itself understand a synthetic ".." row would mean
-    // every index()/rowCount()/parent() implementation - and every place
-    // a QModelIndex's identity is compared - has to agree on what a
-    // "fake" index means, for one button's worth of functionality: not
-    // worth the risk of a subtle model/view consistency bug. This calls
-    // the exact same goUp() the toolbar button does.
-    m_dotDotButton = new QPushButton(QStringLiteral(" .."), this);
-    m_dotDotButton->setIcon(style()->standardIcon(QStyle::SP_DirIcon));
-    m_dotDotButton->setFlat(true);
-    // Explicit palette-based color: without it, the style sheet engine's
-    // own default (opaque black) text color won - invisible against this
-    // app's dark theme (found via a screenshot: the row rendered as a
-    // blank strip, not a rendering-size problem at all).
-    m_dotDotButton->setStyleSheet(QStringLiteral("QPushButton { text-align: left; padding: 4px 8px; border: none; color: palette(text); } "
-                                                  "QPushButton:hover { background: palette(alternate-base); }"));
-    m_dotDotButton->setVisible(false);
-    connect(m_dotDotButton, &QPushButton::clicked, this, &SftpDock::goUp);
+    // Same as double-clicking the bar, but findable without knowing that.
+    m_copyPathButton = new QToolButton(this);
+    m_copyPathButton->setAutoRaise(true);
+    m_copyPathButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_copyPathButton->setText(QStringLiteral("Copy"));
+    m_copyPathButton->setIcon(QIcon::fromTheme(QStringLiteral("edit-copy"), style()->standardIcon(QStyle::SP_FileIcon)));
+    m_copyPathButton->setToolTip(QStringLiteral("Copy path"));
+    m_copyPathButton->setEnabled(false);
+    connect(m_copyPathButton, &QToolButton::clicked, this, [this] { copyPath(m_model->pathForIndex(m_view->rootIndex())); });
+    pathLayout->addWidget(m_copyPathButton);
 
     auto *container = new QWidget(this);
     auto *layout = new QVBoxLayout(container);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    layout->addWidget(toolbar);
+    layout->addWidget(m_toolbar);
     layout->addWidget(pathBar);
-    layout->addWidget(m_dotDotButton);
     layout->addWidget(m_view, 1);
     layout->addWidget(m_statusLabel);
     layout->addWidget(m_progressBar);
@@ -417,7 +542,6 @@ void SftpDock::setActiveConnection(const std::optional<SshConnectionSettings> &s
     m_model->setRoot(QString());
     updatePathLabel();
     m_upAction->setEnabled(false);
-    m_dotDotButton->setVisible(false);
 
     if (!m_settings) {
         setStatus(QStringLiteral("Not an SSH connection"));
@@ -471,7 +595,6 @@ void SftpDock::enterDirectory(const QModelIndex &dir)
     m_view->setRootIndex(dir);
     updatePathLabel();
     m_upAction->setEnabled(dir.isValid());
-    m_dotDotButton->setVisible(dir.isValid());
 
     if (!m_model->isLoaded(dir)) {
         const QString path = m_model->pathForIndex(dir);
@@ -483,7 +606,8 @@ void SftpDock::enterDirectory(const QModelIndex &dir)
 void SftpDock::updatePathLabel()
 {
     const QString path = m_model->pathForIndex(m_view->rootIndex());
-    m_pathLabel->setText(path.isEmpty() ? QStringLiteral("(not connected)") : path);
+    m_pathBar->setPath(path);
+    m_copyPathButton->setEnabled(!path.isEmpty());
 }
 
 void SftpDock::keyPressEvent(QKeyEvent *event)
@@ -525,6 +649,42 @@ void SftpDock::goForward()
     m_navigatingHistory = true;
     enterDirectory(target);
     m_navigatingHistory = false;
+}
+
+void SftpDock::copyPath(const QString &path)
+{
+    if (path.isEmpty())
+        return;
+
+    QGuiApplication::clipboard()->setText(path);
+    setStatus(QStringLiteral("Copied: %1").arg(path));
+}
+
+void SftpDock::navigateToPath(const QString &path)
+{
+    if (!m_session)
+        return;
+
+    if (path == m_model->rootPath()) {
+        enterDirectory(QModelIndex());
+        return;
+    }
+
+    const QModelIndex index = m_model->indexForPath(path);
+    if (index.isValid()) {
+        enterDirectory(index);
+        return;
+    }
+
+    // Above the folder this connection started in (e.g. "/home" while
+    // the model is rooted at "/home/lvd"): the model only holds the
+    // subtree under its root, so re-root it there - the same thing
+    // onConnected() does for the home directory. Its indices are gone
+    // after that, so the back/forward history goes too.
+    m_backStack.clear();
+    m_forwardStack.clear();
+    m_model->setRoot(path);
+    enterDirectory(QModelIndex());
 }
 
 void SftpDock::goUp()

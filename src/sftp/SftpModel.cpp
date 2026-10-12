@@ -299,6 +299,16 @@ QString SftpModel::pathForIndex(const QModelIndex &index) const
     return nodeForIndex(index)->path;
 }
 
+QString SftpModel::rootPath() const
+{
+    return m_root ? m_root->path : QString();
+}
+
+QModelIndex SftpModel::indexForPath(const QString &path) const
+{
+    return indexForNode(findNodeByPath(path));
+}
+
 bool SftpModel::isDirectory(const QModelIndex &index) const
 {
     return nodeForIndex(index)->isDirectory;

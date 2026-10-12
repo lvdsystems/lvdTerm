@@ -42,6 +42,11 @@ public:
     void addPlaceholderDirectory(const QString &parentPath, const QString &name); // optimistic UI after mkdir
 
     QString pathForIndex(const QModelIndex &index) const;
+    QString rootPath() const;
+    // Index of an already-loaded directory by path; invalid both for the
+    // root itself (whose index *is* the invalid one - compare against
+    // rootPath() first) and for a path the model doesn't hold.
+    QModelIndex indexForPath(const QString &path) const;
     bool isDirectory(const QModelIndex &index) const;
     qint64 sizeOf(const QModelIndex &index) const;
     QString nameOf(const QModelIndex &index) const;

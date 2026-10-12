@@ -20,7 +20,10 @@ QPalette darkPalette()
     palette.setColor(QPalette::WindowText, Qt::white);
     palette.setColor(QPalette::Base, baseColor);
     palette.setColor(QPalette::AlternateBase, windowColor);
-    palette.setColor(QPalette::ToolTipBase, Qt::white);
+    // The common recipe sets both of these to white, which makes every
+    // tooltip white-on-white (unreadable) - a lighter grey than the
+    // window background keeps the tooltip distinct, with the same white text.
+    palette.setColor(QPalette::ToolTipBase, QColor(70, 70, 70));
     palette.setColor(QPalette::ToolTipText, Qt::white);
     palette.setColor(QPalette::Text, Qt::white);
     palette.setColor(QPalette::Disabled, QPalette::Text, disabledColor);

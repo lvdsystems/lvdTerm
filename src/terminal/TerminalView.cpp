@@ -136,7 +136,7 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         // Right-click menu: configureRequest() is TerminalDisplay's own
         // "user right-clicked (and no mouse-aware program has the mouse right
         // now, or Shift is held)" signal. It used to paste directly; now it
-        // asks MainWindow for the pane menu (split/clone/copy/paste - see
+        // asks MainWindow for the pane menu (split/copy/paste/close - see
         // MainWindow::showPaneContextMenu()). Paste stays one click away
         // in that menu.
         connect(m_display, &TerminalDisplay::configureRequest, this,
