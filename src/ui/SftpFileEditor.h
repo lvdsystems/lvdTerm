@@ -6,9 +6,13 @@
 #include "transports/ssh/SshConnectionSettings.h"
 
 class QCloseEvent;
+class QCheckBox;
 class QLabel;
-class QPlainTextEdit;
+class QLineEdit;
+class QShortcut;
+class QTimer;
 class QPushButton;
+class CodeEditor;
 class SftpSession;
 
 // A small text editor for one remote file, opened straight from the SFTP
@@ -54,6 +58,10 @@ private:
     void loadDownloadedFile();
     bool startSave();
     bool saveAndWait();
+    void showFindBar();
+    void hideFindBar();
+    void findStep(bool backwards);
+    void refreshFindHighlights(bool selectMatch);
     void setStatus(const QString &text);
     void updateTitle();
 
@@ -63,9 +71,17 @@ private:
     QString m_localPath;
 
     SftpSession *m_session = nullptr;
-    QPlainTextEdit *m_edit = nullptr;
+    CodeEditor *m_edit = nullptr;
     QPushButton *m_saveButton = nullptr;
     QLabel *m_status = nullptr;
+
+    QWidget *m_findBar = nullptr;
+    QLineEdit *m_findEdit = nullptr;
+    QCheckBox *m_findCase = nullptr;
+    QLabel *m_findCount = nullptr;
+    QShortcut *m_escapeShortcut = nullptr;
+    QTimer *m_findRefresh = nullptr; // coalesces re-highlighting while typing in the document
+    QString m_language;
 
     bool m_loaded = false;
     bool m_saving = false;

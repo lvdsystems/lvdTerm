@@ -1,5 +1,7 @@
 #include "SftpFileEditor.h"
 
+#include <QApplication>
+#include <QCheckBox>
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QEventLoop>
@@ -8,22 +10,26 @@
 #include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShortcut>
+#include <QStyle>
 #include <QStringDecoder>
+#include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include "core/AppSettings.h"
 #include "sftp/SftpSession.h"
+#include "ui/CodeEditor.h"
 
 SftpFileEditor::SftpFileEditor(const SshConnectionSettings &settings, const QString &remotePath, QWidget *parent)
     : QWidget(parent, Qt::Window)
     , m_settings(settings)
     , m_remotePath(remotePath)
     , m_session(new SftpSession(settings, this))
-    , m_edit(new QPlainTextEdit(this))
+    , m_edit(new CodeEditor(this))
     , m_saveButton(new QPushButton(QStringLiteral("Save"), this))
     , m_status(new QLabel(this))
 {
@@ -51,9 +57,53 @@ SftpFileEditor::SftpFileEditor(const SshConnectionSettings &settings, const QStr
     top->addWidget(m_saveButton);
     top->addWidget(path, 1);
 
+    // Find bar (Ctrl+F), hidden until asked for.
+    m_findBar = new QWidget(this);
+    m_findEdit = new QLineEdit(m_findBar);
+    m_findEdit->setPlaceholderText(QStringLiteral("Find"));
+    m_findEdit->setClearButtonEnabled(true);
+    m_findCase = new QCheckBox(QStringLiteral("Match case"), m_findBar);
+    m_findCount = new QLabel(m_findBar);
+    m_findCount->setStyleSheet(QStringLiteral("color: palette(mid);"));
+    m_findCount->setMinimumWidth(QFontMetrics(m_findCount->font()).horizontalAdvance(QStringLiteral("5000+ matches")));
+    auto *prevButton = new QToolButton(m_findBar);
+    prevButton->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
+    prevButton->setToolTip(QStringLiteral("Previous match (Shift+Enter)"));
+    auto *nextButton = new QToolButton(m_findBar);
+    nextButton->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    nextButton->setToolTip(QStringLiteral("Next match (Enter)"));
+    auto *closeFindButton = new QToolButton(m_findBar);
+    closeFindButton->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton));
+    closeFindButton->setToolTip(QStringLiteral("Close (Esc)"));
+    auto *findLayout = new QHBoxLayout(m_findBar);
+    findLayout->setContentsMargins(0, 0, 0, 0);
+    findLayout->addWidget(m_findEdit, 1);
+    findLayout->addWidget(prevButton);
+    findLayout->addWidget(nextButton);
+    findLayout->addWidget(m_findCase);
+    findLayout->addWidget(m_findCount);
+    findLayout->addWidget(closeFindButton);
+    m_findBar->hide();
+
+    m_findRefresh = new QTimer(this);
+    m_findRefresh->setSingleShot(true);
+    m_findRefresh->setInterval(150);
+    connect(m_findRefresh, &QTimer::timeout, this, [this] { refreshFindHighlights(false); });
+    connect(m_edit->document(), &QTextDocument::contentsChanged, this, [this] {
+        if (m_findBar->isVisible())
+            m_findRefresh->start();
+    });
+    connect(m_findEdit, &QLineEdit::textChanged, this, [this] { refreshFindHighlights(true); });
+    connect(m_findCase, &QCheckBox::toggled, this, [this] { refreshFindHighlights(true); });
+    connect(m_findEdit, &QLineEdit::returnPressed, this, [this] { findStep(QApplication::keyboardModifiers() & Qt::ShiftModifier); });
+    connect(nextButton, &QToolButton::clicked, this, [this] { findStep(false); });
+    connect(prevButton, &QToolButton::clicked, this, [this] { findStep(true); });
+    connect(closeFindButton, &QToolButton::clicked, this, &SftpFileEditor::hideFindBar);
+
     auto *layout = new QVBoxLayout(this);
     layout->addLayout(top);
     layout->addWidget(m_edit, 1);
+    layout->addWidget(m_findBar);
     layout->addWidget(m_status);
 
     auto *saveShortcut = new QShortcut(QKeySequence::Save, this);
@@ -62,6 +112,20 @@ SftpFileEditor::SftpFileEditor(const SshConnectionSettings &settings, const QStr
     auto *closeShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+W")), this);
     closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(closeShortcut, &QShortcut::activated, this, &QWidget::close);
+
+    auto *findShortcut = new QShortcut(QKeySequence::Find, this);
+    findShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(findShortcut, &QShortcut::activated, this, &SftpFileEditor::showFindBar);
+    auto *findNext = new QShortcut(QKeySequence::FindNext, this);
+    findNext->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(findNext, &QShortcut::activated, this, [this] { findStep(false); });
+    auto *findPrevious = new QShortcut(QKeySequence::FindPrevious, this);
+    findPrevious->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(findPrevious, &QShortcut::activated, this, [this] { findStep(true); });
+    m_escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    m_escapeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    m_escapeShortcut->setEnabled(false); // only while the find bar is open
+    connect(m_escapeShortcut, &QShortcut::activated, this, &SftpFileEditor::hideFindBar);
 
     connect(m_session, &SftpSession::connected, this, &SftpFileEditor::onConnected);
     connect(m_session, &SftpSession::connectFailed, this, [this](const QString &message) { setStatus(QStringLiteral("Connection failed: %1").arg(message)); });
@@ -158,12 +222,13 @@ void SftpFileEditor::loadDownloadedFile()
     if (m_crlf)
         normalized.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
 
+    m_language = m_edit->setSyntax(QFileInfo(m_remotePath).fileName(), normalized.section(QLatin1Char('\n'), 0, 0));
     m_edit->setPlainText(normalized);
     m_edit->document()->setModified(false);
     m_edit->setEnabled(true);
     m_edit->setFocus();
     m_loaded = true;
-    setStatus(QStringLiteral("%1 lines - Ctrl+S to save").arg(m_edit->document()->blockCount()));
+    setStatus(QStringLiteral("%1 - %2 lines - Ctrl+S to save, Ctrl+F to find").arg(m_language).arg(m_edit->document()->blockCount()));
     updateTitle();
 }
 
@@ -221,6 +286,55 @@ void SftpFileEditor::closeEvent(QCloseEvent *event)
         event->accept();
     else
         event->ignore();
+}
+
+void SftpFileEditor::showFindBar()
+{
+    // Start from the selected text, as most editors do.
+    const QString selected = m_edit->textCursor().selectedText();
+    if (!selected.isEmpty() && !selected.contains(QChar::ParagraphSeparator))
+        m_findEdit->setText(selected);
+    m_findBar->show();
+    m_escapeShortcut->setEnabled(true);
+    m_findEdit->setFocus();
+    m_findEdit->selectAll();
+    refreshFindHighlights(false);
+}
+
+void SftpFileEditor::hideFindBar()
+{
+    m_findBar->hide();
+    m_escapeShortcut->setEnabled(false);
+    m_edit->setSearchTerm(QString(), false);
+    m_edit->setFocus();
+}
+
+void SftpFileEditor::findStep(bool backwards)
+{
+    if (!m_findBar->isVisible()) {
+        showFindBar();
+        return;
+    }
+    if (!m_edit->findText(m_findEdit->text(), m_findCase->isChecked(), backwards))
+        refreshFindHighlights(false);
+}
+
+void SftpFileEditor::refreshFindHighlights(bool selectMatch)
+{
+    const QString term = m_findEdit->text();
+    const bool cs = m_findCase->isChecked();
+    const int count = m_edit->setSearchTerm(term, cs);
+    if (selectMatch)
+        m_edit->findText(term, cs, false, true);
+
+    const bool missing = !term.isEmpty() && count == 0;
+    m_findEdit->setStyleSheet(missing ? QStringLiteral("QLineEdit { border: 1px solid #d9534f; }") : QString());
+    if (term.isEmpty())
+        m_findCount->clear();
+    else if (missing)
+        m_findCount->setText(QStringLiteral("No results"));
+    else
+        m_findCount->setText(count >= CodeEditor::kMaxHighlightedMatches ? QStringLiteral("%1+ matches").arg(count) : (count == 1 ? QStringLiteral("1 match") : QStringLiteral("%1 matches").arg(count)));
 }
 
 void SftpFileEditor::setStatus(const QString &text)

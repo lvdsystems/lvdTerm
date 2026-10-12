@@ -71,6 +71,10 @@ add_executable(lvdterm WIN32
     ui/SettingsDialog.h
     ui/SftpDock.cpp
     ui/SftpDock.h
+    ui/CodeEditor.cpp
+    ui/CodeEditor.h
+    ui/SyntaxHighlighter.cpp
+    ui/SyntaxHighlighter.h
     ui/SftpFileEditor.cpp
     ui/SftpFileEditor.h
     ui/BrandingWidget.cpp
