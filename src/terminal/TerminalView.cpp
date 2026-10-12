@@ -163,6 +163,12 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     // Live-apply Settings dialog changes to every already-open pane.
     connect(&AppSettings::instance(), &AppSettings::terminalAppearanceChanged, this, &TerminalView::applyAppearance);
 
+    // Dedicated Copy/Paste keys (Qt::Key_Copy/Key_Paste - what a remapped
+    // mouse button or a multimedia keyboard sends, XF86Copy/XF86Paste on
+    // X11/Wayland). The emulation would otherwise just drop them.
+    if (!m_hexMode)
+        m_display->installEventFilter(this);
+
     auto *findShortcut = new QShortcut(QKeySequence::Find, this);
     findShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(findShortcut, &QShortcut::activated, this, &TerminalView::showFindBar);
@@ -238,6 +244,23 @@ void TerminalView::ensureCorrectSize(const QSize &size)
     m_display->resize(size);
     QResizeEvent event(m_display->size(), QSize());
     QCoreApplication::sendEvent(m_display, &event);
+}
+
+bool TerminalView::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_display && event->type() == QEvent::KeyPress) {
+        switch (static_cast<QKeyEvent *>(event)->key()) {
+        case Qt::Key_Copy:
+            copySelection();
+            return true;
+        case Qt::Key_Paste:
+            pasteFromClipboard();
+            return true;
+        default:
+            break;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void TerminalView::hookTransportSignals()

@@ -116,6 +116,7 @@ target_link_libraries(lvdterm PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::SerialPort
+    Qt6::Test
     qtermwidget_core
     libssh2::libssh2
 )

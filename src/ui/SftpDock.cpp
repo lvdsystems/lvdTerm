@@ -12,6 +12,7 @@
 #include <QGuiApplication>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -85,8 +86,27 @@ public:
 signals:
     void uploadRequested(const QString &localPath, const QString &remotePath);
     void dragOutTooLarge(); // selection wasn't a single small file - see startDrag()
+    // Browser-style history navigation: a mouse's back/forward side
+    // buttons, the Back/Forward media keys (Qt::Key_Back/Key_Forward,
+    // what Logitech-style button remapping sends), or Alt+Left/Right.
+    void backRequested();
+    void forwardRequested();
 
 protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        const bool alt = event->modifiers() == Qt::AltModifier;
+        if (event->key() == Qt::Key_Back || (alt && event->key() == Qt::Key_Left)) {
+            emit backRequested();
+            event->accept();
+        } else if (event->key() == Qt::Key_Forward || (alt && event->key() == Qt::Key_Right)) {
+            emit forwardRequested();
+            event->accept();
+        } else {
+            QTableView::keyPressEvent(event);
+        }
+    }
+
     // QAbstractItemView only ever starts an item drag from a press that
     // landed on an already-selected row; a press on a row that wasn't
     // selected yet falls through to ExtendedSelection's *other* built-in
@@ -100,6 +120,16 @@ protected:
     // start a real item drag instead, matching Explorer.
     void mousePressEvent(QMouseEvent *event) override
     {
+        if (event->button() == Qt::BackButton) {
+            emit backRequested();
+            event->accept();
+            return;
+        }
+        if (event->button() == Qt::ForwardButton) {
+            emit forwardRequested();
+            event->accept();
+            return;
+        }
         if (event->button() == Qt::LeftButton && !(event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))) {
             const QModelIndex index = indexAt(event->pos());
             if (index.isValid() && selectionModel() && !selectionModel()->isSelected(index))
@@ -255,6 +285,8 @@ SftpDock::SftpDock(QWidget *parent)
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_view, &QTableView::doubleClicked, this, &SftpDock::onItemDoubleClicked);
     connect(m_view, &QTableView::customContextMenuRequested, this, &SftpDock::showItemContextMenu);
+    connect(m_view, &SftpBrowserView::backRequested, this, &SftpDock::goBack);
+    connect(m_view, &SftpBrowserView::forwardRequested, this, &SftpDock::goForward);
     connect(m_view, &SftpBrowserView::dragOutTooLarge, this,
             [this] { setStatus(QStringLiteral("Too large to drag out directly - use \"Download...\" instead")); });
 
@@ -365,6 +397,10 @@ void SftpDock::teardownSession()
         m_session = nullptr;
     }
     m_view->setSession(nullptr);
+
+    // Indices into the old connection's model mean nothing to the next one.
+    m_backStack.clear();
+    m_forwardStack.clear();
 }
 
 void SftpDock::setActiveConnection(const std::optional<SshConnectionSettings> &settings)
@@ -424,6 +460,14 @@ void SftpDock::onConnectFailed(const QString &message)
 
 void SftpDock::enterDirectory(const QModelIndex &dir)
 {
+    // Every navigation except back/forward themselves records where it
+    // came from - and a fresh navigation discards the forward history,
+    // like a browser.
+    if (!m_navigatingHistory && QPersistentModelIndex(dir) != QPersistentModelIndex(m_view->rootIndex())) {
+        m_backStack.append(QPersistentModelIndex(m_view->rootIndex()));
+        m_forwardStack.clear();
+    }
+
     m_view->setRootIndex(dir);
     updatePathLabel();
     m_upAction->setEnabled(dir.isValid());
@@ -440,6 +484,47 @@ void SftpDock::updatePathLabel()
 {
     const QString path = m_model->pathForIndex(m_view->rootIndex());
     m_pathLabel->setText(path.isEmpty() ? QStringLiteral("(not connected)") : path);
+}
+
+void SftpDock::keyPressEvent(QKeyEvent *event)
+{
+    // The browser view handles these itself; this covers focus being on
+    // something else in the dock (toolbar button, path label).
+    if (event->key() == Qt::Key_Back) {
+        goBack();
+        event->accept();
+    } else if (event->key() == Qt::Key_Forward) {
+        goForward();
+        event->accept();
+    } else {
+        QDockWidget::keyPressEvent(event);
+    }
+}
+
+void SftpDock::goBack()
+{
+    if (!m_session || m_backStack.isEmpty())
+        return;
+
+    m_forwardStack.append(QPersistentModelIndex(m_view->rootIndex()));
+    const QModelIndex target(m_backStack.takeLast());
+
+    m_navigatingHistory = true;
+    enterDirectory(target);
+    m_navigatingHistory = false;
+}
+
+void SftpDock::goForward()
+{
+    if (!m_session || m_forwardStack.isEmpty())
+        return;
+
+    m_backStack.append(QPersistentModelIndex(m_view->rootIndex()));
+    const QModelIndex target(m_forwardStack.takeLast());
+
+    m_navigatingHistory = true;
+    enterDirectory(target);
+    m_navigatingHistory = false;
 }
 
 void SftpDock::goUp()

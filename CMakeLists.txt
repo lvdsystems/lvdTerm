@@ -15,7 +15,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network SerialPort Test)
 
 # EXCLUDE_FROM_ALL: both of these are statically linked into lvdterm
 # with nothing of their own to ship separately - without this, their own

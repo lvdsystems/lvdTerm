@@ -3,11 +3,14 @@
 #include <optional>
 
 #include <QDockWidget>
+#include <QPersistentModelIndex>
+#include <QVector>
 
 #include "sftp/SftpModel.h"
 #include "transports/ssh/SshConnectionSettings.h"
 
 class QAction;
+class QKeyEvent;
 class QLabel;
 class QProgressBar;
 class QPushButton;
@@ -64,6 +67,8 @@ private slots:
     void showItemContextMenu(const QPoint &pos); // right-click on a file/folder: Download/Rename/Delete
 
     void goUp();
+    void goBack(); // previous folder in this browsing session's history
+    void goForward();
     void uploadFiles();
     void uploadFolder();
     void downloadSelected();
@@ -71,6 +76,9 @@ private slots:
     void deleteSelected();
     void renameSelected();
     void refresh();
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     // Navigates the browser to show `dir`'s contents (dir must be a
@@ -94,4 +102,10 @@ private:
 
     SftpSession *m_session = nullptr;
     std::optional<SshConnectionSettings> m_settings;
+
+    // Browser-style history of folders visited (see enterDirectory());
+    // an invalid index is the connection's home/root listing.
+    QVector<QPersistentModelIndex> m_backStack;
+    QVector<QPersistentModelIndex> m_forwardStack;
+    bool m_navigatingHistory = false;
 };
