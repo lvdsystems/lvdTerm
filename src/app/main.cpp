@@ -9,9 +9,6 @@
 #include <QIcon>
 #include <QStyleFactory>
 
-#include <QClipboard>
-#include <QTimer>
-#include <QtTest/QTest>
 #include "MainWindow.h"
 #include "Theme.h"
 #include "Version.h"
@@ -52,19 +49,6 @@ int main(int argc, char *argv[])
 
     MainWindow window;
     window.show();
-
-    // TEMP SELFTEST - removed after use
-    if (qEnvironmentVariableIsSet("LVD_SELFTEST")) {
-        static MainWindow &win = window;
-        QTimer::singleShot(500, [] { QWidget *w = QApplication::focusWidget(); qWarning("T: focus=%s", w ? w->metaObject()->className() : "none"); QTest::keyClick(w ? w : QApplication::activeWindow(), Qt::Key_T, Qt::ControlModifier); });
-        QTimer::singleShot(1500, [] {
-            QApplication::clipboard()->setText(QStringLiteral("touch /tmp/claude-1000/-home-lvd-Documents-lvd-lvdopen-lvdTerm/e546f0a4-8c6a-4705-a1bb-a5b1d466f783/scratchpad/pasted_marker\n"));
-            QWidget *w = QApplication::focusWidget();
-            qWarning("P: focus=%s", w ? w->metaObject()->className() : "none");
-            QKeyEvent ev(QEvent::KeyPress, Qt::Key_Paste, Qt::NoModifier); QApplication::sendEvent(w, &ev);
-        });
-        QTimer::singleShot(6000, [] { QApplication::quit(); });
-    }
 
     const int result = QApplication::exec();
 
