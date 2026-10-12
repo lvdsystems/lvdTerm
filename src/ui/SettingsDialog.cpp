@@ -82,13 +82,13 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     m_paddingSpin->setRange(AppSettings::kMinPanePadding, AppSettings::kMaxPanePadding);
     m_paddingSpin->setSuffix(QStringLiteral(" px"));
     m_paddingSpin->setValue(AppSettings::instance().panePadding());
-    m_paddingSpin->setToolTip(QStringLiteral("Space between a pane's border and its terminal. The minimum keeps the rounded border clear of the content."));
+    m_paddingSpin->setToolTip(QStringLiteral("Space between a pane's border and its terminal. 0 puts the terminal right against the border."));
     connect(m_paddingSpin, &QSpinBox::valueChanged, this, &SettingsDialog::applyPaneAppearance);
 
     m_gapSpin->setRange(AppSettings::kMinPaneGap, AppSettings::kMaxPaneGap);
     m_gapSpin->setSuffix(QStringLiteral(" px"));
     m_gapSpin->setValue(AppSettings::instance().paneGap());
-    m_gapSpin->setToolTip(QStringLiteral("Width of the draggable gap between split panes."));
+    m_gapSpin->setToolTip(QStringLiteral("Width of the draggable gap between split panes. At 0 the panes touch and there is nothing to drag - resize them back with a gap of 1 or more."));
     connect(m_gapSpin, &QSpinBox::valueChanged, this, &SettingsDialog::applyPaneAppearance);
 
     // --- Mouse

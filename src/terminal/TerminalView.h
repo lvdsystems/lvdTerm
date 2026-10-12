@@ -119,11 +119,8 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override; // Copy/Paste media keys, see the constructor
 
 private:
-    // Border geometry (see paintEvent()): the padding has to be at least
-    // (radius*(sqrt2-1) + width)/sqrt2 for a square content corner to
-    // clear the border's inner curve - 4 for radius 6, width 2, which is
-    // AppSettings::kMinPanePadding.
-    static constexpr int kBorderRadius = 6;
+    // Border geometry (see paintEvent()). Square corners; the layout
+    // margin is this width plus the configurable padding.
     static constexpr int kBorderWidth = 2;
     bool m_paneActive = false;
     QVBoxLayout *m_rootLayout = nullptr;

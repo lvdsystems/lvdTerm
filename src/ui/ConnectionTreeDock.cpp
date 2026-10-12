@@ -1,10 +1,13 @@
 #include "ConnectionTreeDock.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
 #include <QShortcut>
 #include <QStyle>
 #include <QToolBar>
@@ -18,6 +21,34 @@ namespace
 {
 constexpr int kKindRole = Qt::UserRole;
 constexpr int kPayloadRole = Qt::UserRole + 1; // folder path, or connection id string
+
+// A filled accent circle with a white "+" - drawn here (rather than a
+// theme icon, which varies by platform/icon theme and is missing on
+// others) at 1x and 2x so it stays crisp on HiDPI screens.
+QIcon makePlusIcon()
+{
+    QIcon icon;
+    for (const int size : {16, 32}) {
+        QPixmap pixmap(size, size);
+        pixmap.fill(Qt::transparent);
+
+        QPainter p(&pixmap);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QApplication::palette().color(QPalette::Highlight));
+        p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+
+        p.setPen(QPen(Qt::white, size / 8.0, Qt::SolidLine, Qt::RoundCap));
+        const qreal c = size / 2.0;
+        const qreal arm = size * 0.22;
+        p.drawLine(QPointF(c - arm, c), QPointF(c + arm, c));
+        p.drawLine(QPointF(c, c - arm), QPointF(c, c + arm));
+        p.end();
+
+        icon.addPixmap(pixmap);
+    }
+    return icon;
+}
 } // namespace
 
 ConnectionTreeDock::ConnectionTreeDock(ProfileStore *store, QWidget *parent)
@@ -49,7 +80,8 @@ ConnectionTreeDock::ConnectionTreeDock(ProfileStore *store, QWidget *parent)
 
     auto *toolbar = new QToolBar(this);
     toolbar->setIconSize(QSize(16, 16));
-    QAction *newAction = toolbar->addAction(QStringLiteral("New Connection..."));
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    QAction *newAction = toolbar->addAction(makePlusIcon(), QStringLiteral("New Connection..."));
     connect(newAction, &QAction::triggered, this, &ConnectionTreeDock::newConnection);
 
     auto *container = new QWidget(this);

@@ -55,10 +55,8 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         connect(m_hexView, &HexDumpWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
     }
 
-    // Room for the rounded border paintEvent() draws: the padding (see
-    // AppSettings::panePadding(), never below the minimum that keeps the
-    // content's square corners inside the border's inner curve) is the
-    // space between the border and the content.
+    // Room for the border paintEvent() draws, plus the configurable
+    // padding (see AppSettings::panePadding()) between it and the content.
     auto *layout = new QVBoxLayout(this);
     m_rootLayout = layout;
     applyPaneAppearance();
@@ -481,8 +479,10 @@ void TerminalView::hideOverlay()
 
 void TerminalView::applyPaneAppearance()
 {
-    const int padding = AppSettings::instance().panePadding();
-    m_rootLayout->setContentsMargins(padding, padding, padding, padding);
+    // The border is drawn in this margin, so the content starts after it
+    // plus the padding - padding 0 means flush against the border.
+    const int inset = kBorderWidth + AppSettings::instance().panePadding();
+    m_rootLayout->setContentsMargins(inset, inset, inset, inset);
     update(); // the border colours
 }
 
@@ -503,7 +503,6 @@ void TerminalView::paintEvent(QPaintEvent *)
     // via PaneSplitter, the gap between panes) doesn't show as a lighter
     // band between dark terminals.
     p.fillRect(rect(), ColorSchemes::background(AppSettings::instance().colorScheme()));
-    p.setRenderHint(QPainter::Antialiasing);
 
     // Accent for the active pane, a quiet outline for the others - so
     // the edges of every pane read clearly in a split layout.
@@ -513,7 +512,7 @@ void TerminalView::paintEvent(QPaintEvent *)
     p.setBrush(Qt::NoBrush);
 
     const qreal half = kBorderWidth / 2.0;
-    p.drawRoundedRect(QRectF(rect()).adjusted(half, half, -half, -half), kBorderRadius - half, kBorderRadius - half);
+    p.drawRect(QRectF(rect()).adjusted(half, half, -half, -half)); // square corners, pixel-aligned (no antialiasing)
 }
 
 void TerminalView::resizeEvent(QResizeEvent *event)

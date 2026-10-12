@@ -51,16 +51,16 @@ public:
     QColor resolvedActivePaneColor(const QPalette &palette) const;
     QColor resolvedInactivePaneColor(const QPalette &palette) const;
 
-    // Pixels between a pane's border and its content. Never below
-    // kMinPanePadding: the border is rounded, and less than this lets the
-    // content's square corners poke out over the curve.
-    static constexpr int kMinPanePadding = 4;
+    // Pixels between a pane's border (measured from its inner edge) and
+    // its content; 0 puts the terminal right against the border.
+    static constexpr int kMinPanePadding = 0;
+    static constexpr int kDefaultPanePadding = 2;
     static constexpr int kMaxPanePadding = 24;
     int panePadding() const;
     void setPanePadding(int pixels);
 
     // The draggable gap between split panes.
-    static constexpr int kMinPaneGap = 1;
+    static constexpr int kMinPaneGap = 0; // 0 = panes touch, and there is no handle left to drag
     static constexpr int kMaxPaneGap = 24;
     int paneGap() const;
     void setPaneGap(int pixels);

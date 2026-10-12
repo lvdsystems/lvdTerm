@@ -149,7 +149,7 @@ QColor AppSettings::resolvedInactivePaneColor(const QPalette &palette) const
 
 int AppSettings::panePadding() const
 {
-    return qBound(kMinPanePadding, m_settings.value(QLatin1String(kPanePaddingKey), kMinPanePadding).toInt(), kMaxPanePadding);
+    return qBound(kMinPanePadding, m_settings.value(QLatin1String(kPanePaddingKey), kDefaultPanePadding).toInt(), kMaxPanePadding);
 }
 
 void AppSettings::setPanePadding(int pixels)
