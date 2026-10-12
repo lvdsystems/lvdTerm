@@ -19,6 +19,7 @@ struct ConnectionProfile
         Serial,
         Telnet,
         Ssh,
+        Local, // a shell on a local pty/ConPTY - see LocalTransport
     };
 
     QUuid id = QUuid::createUuid();
@@ -62,6 +63,8 @@ struct ConnectionProfile
     bool rawMode = false; // Telnet type only: plain TCP, no IAC negotiation - see RawTransport
 
     SshConnectionSettings ssh;
+
+    QString localShell; // Local type only: empty = the platform default ($SHELL, or PowerShell on Windows)
 
     QJsonObject toJson() const;
     static ConnectionProfile fromJson(const QJsonObject &object);

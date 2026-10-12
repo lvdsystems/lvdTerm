@@ -50,12 +50,15 @@ SplitPicker::SplitPicker(ProfileStore *store, QWidget *parent) : QWidget(parent)
     auto *serialButton = new QPushButton(QStringLiteral("New Serial..."), this);
     auto *telnetButton = new QPushButton(QStringLiteral("New Telnet..."), this);
     auto *sshButton = new QPushButton(QStringLiteral("New SSH..."), this);
+    auto *localButton = new QPushButton(QStringLiteral("Local Shell"), this);
+    connect(localButton, &QPushButton::clicked, this, &SplitPicker::newLocalRequested);
     connect(serialButton, &QPushButton::clicked, this, &SplitPicker::newSerialRequested);
     connect(telnetButton, &QPushButton::clicked, this, &SplitPicker::newTelnetRequested);
     connect(sshButton, &QPushButton::clicked, this, &SplitPicker::newSshRequested);
     newRow->addWidget(serialButton);
     newRow->addWidget(telnetButton);
     newRow->addWidget(sshButton);
+    newRow->addWidget(localButton);
     layout->addLayout(newRow);
 
     auto *cancelButton = new QPushButton(QStringLiteral("Cancel"), this);

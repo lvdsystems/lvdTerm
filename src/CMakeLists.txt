@@ -37,6 +37,7 @@ add_executable(lvdterm WIN32
     core/ThreadReaper.cpp
     core/ThreadReaper.h
     core/Transport.h
+    transports/local/LocalTransport.h
     transports/loopback/LoopbackTransport.h
     transports/serial/SerialPortSettings.h
     transports/serial/SerialTransport.cpp
@@ -126,7 +127,23 @@ if(WIN32)
     # again itself. ws2_32 for sockets (libssh2), gdi32/crypt32/bcrypt for
     # OpenSSL's Windows entropy/cert-store calls.
     target_link_libraries(lvdterm PRIVATE ws2_32 gdi32 crypt32 bcrypt)
+
+    # Local shells via ConPTY (the Windows counterpart of PtyTransport
+    # below); the pseudo-console API itself is resolved from kernel32 at
+    # runtime, so nothing extra to link.
+    target_sources(lvdterm PRIVATE
+        transports/conpty/ConPtyTransport.cpp
+        transports/conpty/ConPtyTransport.h
+    )
 else()
+    # Linux: PtyTransport (the local-shell transport) uses forkpty() -
+    # libutil on older glibc (a stub on 2.34+, where it moved into libc).
+    target_sources(lvdterm PRIVATE
+        transports/pty/PtyTransport.cpp
+        transports/pty/PtyTransport.h
+    )
+    target_link_libraries(lvdterm PRIVATE util)
+
     # Linux: Crypto.cpp's secrets-at-rest backend needs OpenSSL directly
     # (AES-GCM via EVP), not just libssh2's own private use of it, and
     # libsecret (freedesktop.org Secret Service - GNOME Keyring/KWallet)

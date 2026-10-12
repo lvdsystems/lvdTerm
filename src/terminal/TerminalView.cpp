@@ -648,6 +648,9 @@ void TerminalView::updateStatusBar(Transport::State state)
     case ConnectionProfile::Type::Telnet:
         text = QStringLiteral("%1:%2 - %3").arg(m_sessionSnapshot->telnetHost).arg(m_sessionSnapshot->telnetPort).arg(stateText);
         break;
+    case ConnectionProfile::Type::Local:
+        text = state == Transport::State::Disconnected ? QStringLiteral("local - shell exited") : QStringLiteral("local - %1").arg(stateText);
+        break;
     }
 
     m_statusIconLabel->setPixmap(StateIcon::icon(state).pixmap(10, 10));

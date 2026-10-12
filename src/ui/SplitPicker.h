@@ -26,6 +26,7 @@ signals:
     void newSerialRequested();
     void newTelnetRequested();
     void newSshRequested();
+    void newLocalRequested();
     void cancelled();
 
 protected:

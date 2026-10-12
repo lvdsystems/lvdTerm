@@ -13,6 +13,8 @@ QString typeToString(ConnectionProfile::Type type)
         return QStringLiteral("telnet");
     case ConnectionProfile::Type::Ssh:
         return QStringLiteral("ssh");
+    case ConnectionProfile::Type::Local:
+        return QStringLiteral("local");
     }
     return QStringLiteral("serial");
 }
@@ -23,6 +25,8 @@ ConnectionProfile::Type typeFromString(const QString &s)
         return ConnectionProfile::Type::Telnet;
     if (s == QStringLiteral("ssh"))
         return ConnectionProfile::Type::Ssh;
+    if (s == QStringLiteral("local"))
+        return ConnectionProfile::Type::Local;
     return ConnectionProfile::Type::Serial;
 }
 
@@ -111,6 +115,12 @@ QJsonObject ConnectionProfile::toJson() const
         o[QStringLiteral("ssh")] = s;
         break;
     }
+    case Type::Local: {
+        QJsonObject l;
+        l[QStringLiteral("shell")] = localShell;
+        o[QStringLiteral("local")] = l;
+        break;
+    }
     }
 
     return o;
@@ -163,6 +173,9 @@ ConnectionProfile ConnectionProfile::fromJson(const QJsonObject &object)
         p.ssh.passphrase = unprotectFromBase64(s[QStringLiteral("passphraseProtected")].toString());
         break;
     }
+    case Type::Local:
+        p.localShell = object[QStringLiteral("local")].toObject()[QStringLiteral("shell")].toString();
+        break;
     }
 
     return p;

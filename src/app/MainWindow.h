@@ -60,6 +60,8 @@ private:
     void newSerialConnection();
     void newTelnetConnection();
     void newSshConnection();
+    std::optional<NewConnectionResult> localResult(const QString &shell); // empty = the platform's default shell
+    void newLocalTerminal();
     void openProfile(const ConnectionProfile &profile);
 
     std::optional<NewConnectionResult> runSerialDialog();
@@ -75,6 +77,7 @@ private:
     void collapseSplitterIfSingle(QSplitter *splitter); // shared by closeActivePane() and a cancelled SplitPicker
     void closeActivePane();
     void closeTab(int index);
+    void confirmCloseCurrentTab(); // Ctrl+W - unlike closeTab(), asks first
     void renameTab(int index);
     void toggleSessionLogging();
     void onFocusChanged(QWidget *old, QWidget *now);
@@ -120,6 +123,8 @@ private:
     QAction *m_closePaneAction = nullptr;
     QAction *m_findAction = nullptr;
     QAction *m_logAction = nullptr;
+    QAction *m_closeTabAction = nullptr; // Ctrl+W - lives in the Connection menu
+    QAction *m_newLocalAction = nullptr; // Ctrl+T - lives in the Connection menu
 
     // The "Terminal" menu (Clear Buffer/Clear Screen/Copy/Paste) - its own
     // QAction (as returned by menuBar()->addMenu()) is kept so

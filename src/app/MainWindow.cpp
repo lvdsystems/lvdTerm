@@ -8,6 +8,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPainter>
 #include <QShowEvent>
 #include <QSplitter>
@@ -22,6 +23,7 @@
 #include "transports/loopback/LoopbackTransport.h"
 #include "transports/raw/RawTransport.h"
 #include "transports/serial/SerialTransport.h"
+#include "transports/local/LocalTransport.h"
 #include "transports/ssh/SshTransport.h"
 #include "transports/telnet/TelnetTransport.h"
 #include "ui/AboutDialog.h"
@@ -101,6 +103,12 @@ void MainWindow::createMenus()
 {
     QMenu *connectionMenu = menuBar()->addMenu(QStringLiteral("&Connection"));
 
+    m_newLocalAction = connectionMenu->addAction(QStringLiteral("New &Local Terminal"));
+    m_newLocalAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+T")));
+    connect(m_newLocalAction, &QAction::triggered, this, &MainWindow::newLocalTerminal);
+
+    connectionMenu->addSeparator();
+
     QAction *serialAction = connectionMenu->addAction(QStringLiteral("New &Serial Connection..."));
     connect(serialAction, &QAction::triggered, this, &MainWindow::newSerialConnection);
 
@@ -114,6 +122,12 @@ void MainWindow::createMenus()
 
     QAction *loopbackAction = connectionMenu->addAction(QStringLiteral("New &Loopback (test)"));
     connect(loopbackAction, &QAction::triggered, this, &MainWindow::addLoopbackTab);
+
+    connectionMenu->addSeparator();
+
+    m_closeTabAction = connectionMenu->addAction(QStringLiteral("&Close Tab"));
+    m_closeTabAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+W")));
+    connect(m_closeTabAction, &QAction::triggered, this, &MainWindow::confirmCloseCurrentTab);
 
     // No "Pane" menu - these actions live only on `this` (so their
     // shortcuts keep working) and the tab bar's right-click context menu
@@ -217,6 +231,26 @@ void MainWindow::toggleSessionLogging()
     view->startLogging(path);
     statusBar()->showMessage(view->isLogging() ? QStringLiteral("Logging to %1").arg(path) : QStringLiteral("Could not open %1 for logging").arg(path),
                               5000);
+}
+
+std::optional<MainWindow::NewConnectionResult> MainWindow::localResult(const QString &shell)
+{
+    ConnectionProfile snapshot;
+    snapshot.type = ConnectionProfile::Type::Local;
+    snapshot.name = QStringLiteral("Local");
+    snapshot.localShell = shell;
+
+    // Not auto-reconnected: the shell exiting (the user typed `exit`) is
+    // the normal way a local session ends, not a dropped link to retry.
+    NewConnectionResult result{new LocalTransport(shell), snapshot.name, [shell] { return new LocalTransport(shell); }, false};
+    result.snapshot = snapshot;
+    return result;
+}
+
+void MainWindow::newLocalTerminal()
+{
+    if (auto result = localResult(QString()))
+        addTerminalTab(*result);
 }
 
 void MainWindow::addLoopbackTab()
@@ -340,6 +374,12 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(cons
         NewConnectionResult result{new SshTransport(s), profile.name, [s] { return new SshTransport(s); }, profile.autoReconnect};
         result.sshSettings = s;
         result.snapshot = profile;
+        return result;
+    }
+    case ConnectionProfile::Type::Local: {
+        auto result = localResult(profile.localShell);
+        result->title = profile.name;
+        result->snapshot = profile;
         return result;
     }
     }
@@ -512,6 +552,10 @@ void MainWindow::splitActivePane(Qt::Orientation orientation)
         if (auto result = runTelnetDialog())
             finishSplitWithResult(splitter, picker, *result);
     });
+    connect(picker, &SplitPicker::newLocalRequested, this, [this, splitter, picker] {
+        if (auto result = localResult(QString()))
+            finishSplitWithResult(splitter, picker, *result);
+    });
     connect(picker, &SplitPicker::newSshRequested, this, [this, splitter, picker] {
         if (auto result = runSshDialog())
             finishSplitWithResult(splitter, picker, *result);
@@ -584,6 +628,25 @@ void MainWindow::closeActivePane()
 
     if (auto *newFocusView = qobject_cast<TerminalView *>(m_tabs->currentWidget()))
         newFocusView->setFocus();
+}
+
+void MainWindow::confirmCloseCurrentTab()
+{
+    const int index = m_tabs->currentIndex();
+    QWidget *root = m_tabs->widget(index);
+    if (!root)
+        return;
+
+    // The welcome tab has no session to lose - nothing to confirm.
+    if (!collectViews(root).isEmpty()) {
+        const QMessageBox::StandardButton answer = QMessageBox::question(
+            this, QStringLiteral("Close Tab"), QStringLiteral("Close \"%1\" and end its session?").arg(m_tabs->tabText(index)),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes)
+            return;
+    }
+
+    closeTab(index);
 }
 
 void MainWindow::closeTab(int index)

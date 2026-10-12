@@ -37,6 +37,7 @@ namespace
 constexpr int kSerialIndex = 0;
 constexpr int kTelnetIndex = 1;
 constexpr int kSshIndex = 2;
+constexpr int kLocalIndex = 3;
 } // namespace
 
 ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defaultFolder)
@@ -58,6 +59,7 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     , m_telnetPortSpin(new QSpinBox(this))
     , m_telnetRawModeCheck(new QCheckBox(QStringLiteral("Raw (no Telnet protocol negotiation)"), this))
     , m_sshWidget(new SshSettingsWidget(this))
+    , m_localShellEdit(new QLineEdit(this))
 {
     setWindowTitle(QStringLiteral("New Connection"));
 
@@ -68,6 +70,7 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     m_typeCombo->addItem(QStringLiteral("Serial"));
     m_typeCombo->addItem(QStringLiteral("Telnet"));
     m_typeCombo->addItem(QStringLiteral("SSH"));
+    m_typeCombo->addItem(QStringLiteral("Local Shell"));
     m_typeCombo->setCurrentIndex(kSshIndex); // most new connections are SSH; setProfile() overrides this when editing an existing one
     connect(m_typeCombo, &QComboBox::currentIndexChanged, this, &ConnectionEditDialog::updateTypeStack);
 
@@ -109,9 +112,16 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     telnetForm->addRow(QStringLiteral("Port:"), m_telnetPortSpin);
     telnetForm->addRow(QString(), m_telnetRawModeCheck);
 
+    auto *localPage = new QWidget(this);
+    auto *localForm = new QFormLayout(localPage);
+    localForm->setContentsMargins(0, 0, 0, 0);
+    m_localShellEdit->setPlaceholderText(QStringLiteral("blank = default shell ($SHELL / PowerShell)"));
+    localForm->addRow(QStringLiteral("Shell:"), m_localShellEdit);
+
     m_typeStack->insertWidget(kSerialIndex, m_serialWidget);
     m_typeStack->insertWidget(kTelnetIndex, telnetPage);
     m_typeStack->insertWidget(kSshIndex, m_sshWidget);
+    m_typeStack->insertWidget(kLocalIndex, localPage);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -180,6 +190,8 @@ ConnectionProfile::Type ConnectionEditDialog::indexToType(int index) const
         return ConnectionProfile::Type::Telnet;
     case kSshIndex:
         return ConnectionProfile::Type::Ssh;
+    case kLocalIndex:
+        return ConnectionProfile::Type::Local;
     default:
         return ConnectionProfile::Type::Serial;
     }
@@ -192,6 +204,8 @@ int ConnectionEditDialog::typeToIndex(ConnectionProfile::Type type) const
         return kTelnetIndex;
     case ConnectionProfile::Type::Ssh:
         return kSshIndex;
+    case ConnectionProfile::Type::Local:
+        return kLocalIndex;
     case ConnectionProfile::Type::Serial:
         return kSerialIndex;
     }
@@ -227,6 +241,9 @@ void ConnectionEditDialog::setProfile(const ConnectionProfile &profile)
     case ConnectionProfile::Type::Ssh:
         m_sshWidget->setSettings(profile.ssh);
         break;
+    case ConnectionProfile::Type::Local:
+        m_localShellEdit->setText(profile.localShell);
+        break;
     }
 }
 
@@ -255,6 +272,9 @@ ConnectionProfile ConnectionEditDialog::profile() const
         break;
     case ConnectionProfile::Type::Ssh:
         p.ssh = m_sshWidget->settings();
+        break;
+    case ConnectionProfile::Type::Local:
+        p.localShell = m_localShellEdit->text().trimmed();
         break;
     }
 

@@ -58,4 +58,5 @@ private:
     QSpinBox *m_telnetPortSpin = nullptr;
     QCheckBox *m_telnetRawModeCheck = nullptr;
     SshSettingsWidget *m_sshWidget = nullptr;
+    QLineEdit *m_localShellEdit = nullptr;
 };
