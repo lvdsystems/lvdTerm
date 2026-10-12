@@ -68,6 +68,11 @@ void SftpSession::uploadDirectory(const QString &localPath, const QString &remot
     QMetaObject::invokeMethod(m_client, "uploadDirectory", Qt::QueuedConnection, Q_ARG(QString, localPath), Q_ARG(QString, remotePath));
 }
 
+void SftpSession::createFile(const QString &path)
+{
+    QMetaObject::invokeMethod(m_client, "createFile", Qt::QueuedConnection, Q_ARG(QString, path));
+}
+
 void SftpSession::makeDirectory(const QString &path)
 {
     QMetaObject::invokeMethod(m_client, "makeDirectory", Qt::QueuedConnection, Q_ARG(QString, path));

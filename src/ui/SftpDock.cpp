@@ -33,6 +33,7 @@
 #include <QVBoxLayout>
 
 #include "core/AppSettings.h"
+#include "ui/SftpFileEditor.h"
 #include "sftp/SftpSession.h"
 
 namespace
@@ -930,7 +931,45 @@ void SftpDock::onItemDoubleClicked(const QModelIndex &index)
     if (m_model->isDirectory(index))
         enterDirectory(index);
     else
-        downloadSelected(); // Explorer-"open"-like convenience; double-click always sets currentIndex() first
+        openInEditor(index); // double-click a file to edit it; "Download..." is in the right-click menu and toolbar
+}
+
+void SftpDock::openInEditor(const QModelIndex &index)
+{
+    if (!m_session || !m_settings || !index.isValid() || m_model->isDirectory(index))
+        return;
+
+    if (m_model->sizeOf(index) > SftpFileEditor::kMaxBytes) {
+        QMessageBox::information(this, QStringLiteral("Edit"),
+                                  QStringLiteral("\"%1\" is too large to edit here (limit %2 MB). Use Download instead.")
+                                      .arg(m_model->nameOf(index))
+                                      .arg(SftpFileEditor::kMaxBytes / (1024 * 1024)));
+        return;
+    }
+
+    const QString remotePath = m_model->pathForIndex(index);
+    const QString key = QStringLiteral("%1@%2:%3:%4").arg(m_settings->username, m_settings->host).arg(m_settings->port).arg(remotePath);
+
+    // Already open: bring that editor forward instead of downloading again.
+    if (SftpFileEditor *existing = m_editors.value(key)) {
+        existing->raise();
+        existing->activateWindow();
+        return;
+    }
+
+    auto *editor = new SftpFileEditor(*m_settings, remotePath, window());
+    m_editors.insert(key, editor);
+    // A saved file's size/time changed - refresh the listing it's in
+    // (if this dock is still showing that connection).
+    connect(editor, &SftpFileEditor::saved, this, [this](const QString &path) {
+        if (!m_session)
+            return;
+        const int lastSlash = path.lastIndexOf(QLatin1Char('/'));
+        const QString parentPath = lastSlash > 0 ? path.left(lastSlash) : QStringLiteral("/");
+        m_model->markLoading(parentPath);
+        m_session->listDirectory(parentPath);
+    });
+    editor->show();
 }
 
 void SftpDock::onDirectoryListed(const QString &path, const QVector<SftpEntry> &entries)
@@ -941,6 +980,12 @@ void SftpDock::onDirectoryListed(const QString &path, const QVector<SftpEntry> &
 void SftpDock::onOperationFailed(const QString &operation, const QString &path, const QString &message)
 {
     m_model->markLoadFailed(path);
+    if (operation == QStringLiteral("create")) {
+        // Creation never overwrites (see SftpClient::createFile), and the
+        // server's own wording for "already exists" is just "failure".
+        setStatus(QStringLiteral("Could not create %1: %2 (a file with that name may already exist)").arg(path, message));
+        return;
+    }
     setStatus(QStringLiteral("%1 failed for %2: %3").arg(operation, path, message));
 }
 
@@ -950,7 +995,7 @@ void SftpDock::onOperationSucceeded(const QString &operation, const QString &pat
 
     if (operation == QStringLiteral("delete") || operation == QStringLiteral("rename")) {
         m_model->removeEntry(path);
-    } else if (operation == QStringLiteral("mkdir") || operation == QStringLiteral("upload")) {
+    } else if (operation == QStringLiteral("mkdir") || operation == QStringLiteral("upload") || operation == QStringLiteral("create")) {
         // Re-list the parent so the new entry (with a real size, for an
         // upload) shows up, rather than trying to patch the tree by hand.
         const int lastSlash = path.lastIndexOf(QLatin1Char('/'));
@@ -1008,9 +1053,19 @@ void SftpDock::uploadFiles()
 
 void SftpDock::showItemContextMenu(const QPoint &pos)
 {
-    const QModelIndex index = m_view->indexAt(pos);
-    if (!index.isValid() || !m_session)
+    if (!m_session)
         return;
+
+    const QModelIndex index = m_view->indexAt(pos);
+
+    // Empty space in the list: only the "create something here" actions.
+    if (!index.isValid()) {
+        QMenu emptyMenu(this);
+        connect(emptyMenu.addAction(QStringLiteral("New File...")), &QAction::triggered, this, &SftpDock::newFile);
+        connect(emptyMenu.addAction(QStringLiteral("New Folder...")), &QAction::triggered, this, &SftpDock::newFolder);
+        emptyMenu.exec(m_view->viewport()->mapToGlobal(pos));
+        return;
+    }
 
     // Right-clicking a row that wasn't already selected should act on
     // that row, not whatever was selected before - same reasoning as the
@@ -1018,8 +1073,14 @@ void SftpDock::showItemContextMenu(const QPoint &pos)
     m_view->setCurrentIndex(index);
 
     QMenu menu(this);
+    if (!m_model->isDirectory(index)) {
+        connect(menu.addAction(QStringLiteral("Edit")), &QAction::triggered, this, [this, index] { openInEditor(index); });
+        menu.addSeparator();
+    }
     connect(menu.addAction(QStringLiteral("Download...")), &QAction::triggered, this, &SftpDock::downloadSelected);
     connect(menu.addAction(QStringLiteral("Rename...")), &QAction::triggered, this, &SftpDock::renameSelected);
+    menu.addSeparator();
+    connect(menu.addAction(QStringLiteral("New File...")), &QAction::triggered, this, &SftpDock::newFile);
     menu.addSeparator();
     connect(menu.addAction(QStringLiteral("Delete")), &QAction::triggered, this, &SftpDock::deleteSelected);
     menu.exec(m_view->viewport()->mapToGlobal(pos));
@@ -1063,6 +1124,27 @@ void SftpDock::uploadFolder()
     const QFileInfo info(localPath);
     const QString targetDir = m_model->pathForIndex(m_view->rootIndex());
     m_session->uploadDirectory(localPath, joinRemotePath(targetDir, info.fileName()));
+}
+
+void SftpDock::newFile()
+{
+    if (!m_session)
+        return;
+
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, QStringLiteral("New File"), QStringLiteral("File name:"), QLineEdit::Normal, QString(), &ok).trimmed();
+    if (!ok || name.isEmpty())
+        return;
+
+    // A name, not a path - "a/b.txt" would silently target another folder.
+    if (name.contains(QLatin1Char('/'))) {
+        QMessageBox::warning(this, QStringLiteral("New File"), QStringLiteral("A file name can't contain \"/\"."));
+        return;
+    }
+
+    // The dock re-lists the folder once the server confirms (see
+    // onOperationSucceeded()), so the new file shows up with real details.
+    m_session->createFile(joinRemotePath(m_model->pathForIndex(m_view->rootIndex()), name));
 }
 
 void SftpDock::newFolder()

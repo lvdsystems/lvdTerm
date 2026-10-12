@@ -35,6 +35,7 @@
 #include "core/AppSettings.h"
 #include "ui/PaneSplitter.h"
 #include "ui/SftpDock.h"
+#include "ui/SftpFileEditor.h"
 #include "ui/SplitPicker.h"
 #include "ui/SshConnectDialog.h"
 #include "ui/SshCredentialDialog.h"
@@ -127,6 +128,16 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    // Open SFTP file editors with unsaved changes get asked first (they're
+    // separate windows owned by this one, so they'd otherwise just vanish
+    // with it). Cancelling any of them cancels quitting.
+    for (SftpFileEditor *editor : findChildren<SftpFileEditor *>()) {
+        if (!editor->requestClose()) {
+            event->ignore();
+            return;
+        }
+    }
+
     SessionStore::save(captureSession());
     QMainWindow::closeEvent(event);
 }

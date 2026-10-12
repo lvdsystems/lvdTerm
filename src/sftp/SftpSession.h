@@ -26,6 +26,7 @@ public:
     void downloadDirectory(const QString &remotePath, const QString &localPath);
     void uploadDirectory(const QString &localPath, const QString &remotePath);
     void makeDirectory(const QString &path);
+    void createFile(const QString &path);
     void removeFile(const QString &path);
     void removeDirectory(const QString &path);
     void renameEntry(const QString &oldPath, const QString &newPath);

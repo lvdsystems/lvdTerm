@@ -442,6 +442,25 @@ void SftpClient::uploadDirectory(const QString &localPath, const QString &remote
     emit operationSucceeded(QStringLiteral("upload"), remotePath);
 }
 
+void SftpClient::createFile(const QString &path)
+{
+    if (!m_sftp) {
+        emit operationFailed(QStringLiteral("create"), path, QStringLiteral("Not connected"));
+        return;
+    }
+
+    // EXCL: never truncate an existing file by accident.
+    LIBSSH2_SFTP_HANDLE *handle = libssh2_sftp_open(m_sftp, path.toUtf8().constData(),
+                                                     LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_EXCL, 0644);
+    if (!handle) {
+        emit operationFailed(QStringLiteral("create"), path, lastSftpError());
+        return;
+    }
+    libssh2_sftp_close(handle);
+
+    emit operationSucceeded(QStringLiteral("create"), path);
+}
+
 void SftpClient::makeDirectory(const QString &path)
 {
     if (!m_sftp) {

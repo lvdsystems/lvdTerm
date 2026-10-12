@@ -3,6 +3,8 @@
 #include <optional>
 
 #include <QDockWidget>
+#include <QHash>
+#include <QPointer>
 #include <QPersistentModelIndex>
 #include <QVector>
 
@@ -19,6 +21,7 @@ class SftpSession;
 class SftpBrowserView;
 class PathBar;
 class DropOverlay;
+class SftpFileEditor;
 class QDragEnterEvent;
 class QDragLeaveEvent;
 class QDragMoveEvent;
@@ -69,7 +72,7 @@ private slots:
     void onTransferProgress(const QString &path, qint64 bytesDone, qint64 totalBytes);
     void onTransferFinished(const QString &path, bool ok);
     void onUploadRequested(const QString &localPath, const QString &remotePath);
-    void onItemDoubleClicked(const QModelIndex &index); // enters a folder, or downloads a file
+    void onItemDoubleClicked(const QModelIndex &index); // enters a folder, or opens a file in the editor
     void showItemContextMenu(const QPoint &pos); // right-click on a file/folder: Download/Rename/Delete
 
     void goUp();
@@ -80,6 +83,7 @@ private slots:
     void uploadFiles();
     void uploadFolder();
     void downloadSelected();
+    void newFile();
     void newFolder();
     void deleteSelected();
     void renameSelected();
@@ -103,6 +107,7 @@ private:
     void updatePathLabel();
     void setStatus(const QString &text);
     void teardownSession();
+    void openInEditor(const QModelIndex &file); // see SftpFileEditor
     bool dropsAccepted() const; // connected, with a folder to drop into
     void showDropOverlay(const QString &targetDir); // the "+ Drop to upload" veil, see DropOverlay
     void hideDropOverlay();
@@ -113,6 +118,7 @@ private:
     QAction *m_upAction = nullptr;
     PathBar *m_pathBar = nullptr;
     DropOverlay *m_dropOverlay = nullptr;
+    QHash<QString, QPointer<SftpFileEditor>> m_editors; // open editors by user@host:port:path
     QToolButton *m_copyPathButton = nullptr;
     QLabel *m_statusLabel = nullptr;
     QProgressBar *m_progressBar = nullptr;
