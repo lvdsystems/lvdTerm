@@ -8,6 +8,7 @@
 #include "core/ConnectionProfile.h"
 #include "core/SessionStore.h"
 #include "core/Transport.h"
+#include "terminal/PaneDropZone.h"
 #include "transports/ssh/SshConnectionSettings.h"
 
 class QCloseEvent;
@@ -73,7 +74,9 @@ private:
     TerminalView *makeView(const NewConnectionResult &result);
 
     void showPaneContextMenu(TerminalView *view, const QPoint &globalPos); // right-click inside a pane
+    void changePaneSettings(TerminalView *view); // "Change Settings...": edit port/baud/host/... and reconnect this pane
 
+    void movePane(TerminalView *source, TerminalView *target, PaneDropZone zone); // drag and drop: dropped on `target`'s edge (split) or middle (swap)
     void splitActivePane(Qt::Orientation orientation);
     void finishSplitWithResult(QSplitter *splitter, SplitPicker *picker, const NewConnectionResult &result);
     void collapseSplitterIfSingle(QSplitter *splitter); // shared by closeActivePane() and a cancelled SplitPicker

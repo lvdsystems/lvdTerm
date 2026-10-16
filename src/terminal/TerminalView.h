@@ -5,6 +5,7 @@
 
 #include <QWidget>
 
+#include "PaneDropZone.h"
 #include "TerminalDisplay.h"
 #include "core/ConnectionProfile.h"
 #include "core/Transport.h"
@@ -21,6 +22,8 @@ class QLineEdit;
 class QPushButton;
 class QTimer;
 class QFile;
+class QMimeData;
+class QDropEvent;
 
 // The widget a tab/split pane actually shows: a TerminalDisplay (vendored
 // QTermWidget core) driven by a TerminalSession, fed by a Transport handed
@@ -58,6 +61,20 @@ public:
     ~TerminalView() override;
 
     void connectToHost();
+
+    // "Respawn Terminal": tears down the current Transport and starts a
+    // fresh one from the same settings, whether or not the old one is still
+    // alive. No-op while a connection attempt is in progress (see
+    // doReconnectNow()).
+    void respawn();
+    // "Change Settings": like respawn(), but with a different Transport
+    // (already built from the new settings - `recreate`, `sshSettings` and
+    // `sessionSnapshot` describe it, as in the constructor). Returns false,
+    // leaving everything untouched, while a connection attempt is in
+    // progress; the caller still owns `transport` in that case.
+    bool reconfigure(Transport *transport, TransportFactory recreate, std::optional<SshConnectionSettings> sshSettings,
+                     std::optional<ConnectionProfile> sessionSnapshot);
+    bool canRespawn() const { return m_transport->state() != Transport::State::Connecting; }
     void setAutoReconnectEnabled(bool enabled) { m_autoReconnect = enabled; }
     bool autoReconnectEnabled() const { return m_autoReconnect; }
 
@@ -118,11 +135,18 @@ signals:
     // Right-click inside the pane (terminal, or hex dump) - MainWindow
     // owns what the menu offers, since every item acts on the pane tree.
     void contextMenuRequested(const QPoint &globalPos);
+    // Another pane was dragged (by its status strip) and dropped on this
+    // one. MainWindow owns the pane tree, so it does the actual move.
+    void paneDropped(TerminalView *source, PaneDropZone zone);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
-    bool eventFilter(QObject *watched, QEvent *event) override; // Copy/Paste media keys, see the constructor
+    bool eventFilter(QObject *watched, QEvent *event) override; // Copy/Paste media keys, status strip drag start, pane drops over the display
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dragLeaveEvent(QDragLeaveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private:
     // Border geometry (see paintEvent()). Square corners; the layout
@@ -132,6 +156,21 @@ private:
     QVBoxLayout *m_rootLayout = nullptr;
     QWidget *m_toast = nullptr; // "Copied to clipboard", created on first use - see showCopiedToast()
     QTimer *m_toastTimer = nullptr;
+    // Moving a pane by drag and drop: the status strip is the handle
+    // (startPaneDrag()), any pane is a target. Only drags started by
+    // startPaneDrag() count (see isPaneDrag()) - text/files dropped on the
+    // terminal still paste as before.
+    bool isPaneDrag(const QMimeData *mime) const;
+    void startPaneDrag();
+    PaneDropZone zoneAt(const QPoint &pos) const;
+    void showDropIndicator(const QPoint &pos);
+    void hideDropIndicator();
+    void finishPaneDrop(QDropEvent *event, const QPoint &posInThis); // posInThis: in this widget's coordinates
+    QWidget *m_statusBarWidget = nullptr;
+    QWidget *m_dropIndicator = nullptr; // translucent highlight of where the drop would land
+    QPoint m_dragPressPos;
+    bool m_dragArmed = false; // left button went down on the status strip, drag not yet started
+
     void showCopiedToast();
     void positionToast();
     void applyPaneAppearance(); // padding + border colours, from AppSettings
