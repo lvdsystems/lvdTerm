@@ -51,6 +51,10 @@ upstream except where noted below.
 
 ## Patches applied to vendored files
 
+- **`KeyboardTranslator.cpp`** (`KeyboardTranslatorManager::saveTranslator()`):
+  dropped its `qDebug() << "... unimplemented"`. The function is an upstream
+  no-op stub and lvdterm calls it (via `addTranslator()`) once per built-in
+  keyboard profile at startup, so it only added three log lines per launch.
 - **`Emulation.cpp`**: removed `#include "Session.h"`. It was a vestigial,
   unused include (the only symbol from `Session.h`'s enum, `NOTIFYACTIVITY`,
   is actually defined in `Emulation.h` itself).

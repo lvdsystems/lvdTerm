@@ -15,6 +15,10 @@
 ### Bugfix
 - Ctrl+F did nothing in a terminal pane: it was bound twice, which Qt treats as
   ambiguous and fires neither. There is now one binding per command.
+- Linux (GNOME/Wayland): windows had no minimize/maximize/close buttons when
+  started from a shell with a stale session D-Bus address (the bus had restarted
+  since the shell began, so Qt refused to connect and never learned the button
+  layout). The address is now repaired at startup.
 
 ## 0.3.2
 
