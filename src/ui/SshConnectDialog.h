@@ -18,6 +18,7 @@ public:
     explicit SshConnectDialog(QWidget *parent = nullptr);
 
     SshConnectionSettings settings() const;
+    void setSettings(const SshConnectionSettings &settings);
 
 private:
     SshSettingsWidget *m_widget = nullptr;

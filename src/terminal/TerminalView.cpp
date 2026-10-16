@@ -3,6 +3,14 @@
 #include <QAction>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDrag>
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QMouseEvent>
+#include <QPointer>
 #include <QFile>
 #include <QFont>
 #include <QHBoxLayout>
@@ -12,6 +20,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QResizeEvent>
+#include <QApplication>
 #include <QPainter>
 #include <QShortcut>
 #include <QTimer>
@@ -29,6 +38,52 @@
 
 namespace
 {
+// Marks a drag as "a pane being moved"; the payload is irrelevant (the
+// dragged pane is s_dragSource - the drag never leaves this process).
+const char *const kPaneMime = "application/x-lvdterm-pane";
+QPointer<TerminalView> s_dragSource;
+
+// The translucent highlight shown over a pane while another is dragged
+// across it, covering the half (or whole, for a swap) the drop would take.
+class DropIndicator : public QWidget
+{
+public:
+    explicit DropIndicator(QWidget *parent) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+    }
+    void setLook(const QColor &color, const QString &label)
+    {
+        m_color = color;
+        m_label = label;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        QColor fill = m_color;
+        fill.setAlpha(80);
+        p.fillRect(rect(), fill);
+        p.setPen(QPen(m_color, 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(rect().adjusted(1, 1, -1, -1));
+        if (!m_label.isEmpty()) {
+            QFont f = font();
+            f.setBold(true);
+            p.setFont(f);
+            p.setPen(Qt::white);
+            p.drawText(rect(), Qt::AlignCenter, m_label);
+        }
+    }
+
+private:
+    QColor m_color;
+    QString m_label;
+};
+
 // The small "Copied to clipboard" pill that flashes at a pane's bottom
 // right after a copy. Transparent to the mouse so it never gets in the
 // way of the terminal underneath.
@@ -92,6 +147,11 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         // paints itself at whatever default/stale geometry it happens to
         // have, it doesn't just stay invisible on its own.
         m_display->hide();
+        // QPlainTextEdit would otherwise swallow (and reject) a dragged
+        // pane before it reaches dragEnterEvent() below.
+        m_hexView->setAcceptDrops(false);
+        for (QWidget *child : m_hexView->findChildren<QWidget *>())
+            child->setAcceptDrops(false);
         connect(m_hexView, &HexDumpWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
     }
 
@@ -115,6 +175,13 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     m_statusTextLabel->setStyleSheet(QStringLiteral("color: palette(mid);"));
     statusLayout->addWidget(m_statusIconLabel);
     statusLayout->addWidget(m_statusTextLabel, 1);
+
+    // The pane's drag handle - see startPaneDrag().
+    m_statusBarWidget = statusBar;
+    statusBar->setCursor(Qt::OpenHandCursor);
+    statusBar->setToolTip(QStringLiteral("Drag to move this pane"));
+    statusBar->installEventFilter(this);
+    setAcceptDrops(true);
 
     statusBar->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(statusBar, &QWidget::customContextMenuRequested, this, [this, statusBar](const QPoint &pos) {
@@ -225,10 +292,6 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     if (!m_hexMode)
         m_display->installEventFilter(this);
 
-    auto *findShortcut = new QShortcut(QKeySequence::Find, this);
-    findShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(findShortcut, &QShortcut::activated, this, &TerminalView::showFindBar);
-
     hookTransportSignals();
 
     // Auto-start session logging for a saved connection that asks for it
@@ -294,6 +357,12 @@ void TerminalView::pasteFromClipboard()
     m_display->pasteClipboard();
 }
 
+void TerminalView::sendBytes(const QByteArray &bytes)
+{
+    if (!bytes.isEmpty() && m_transport->state() == Transport::State::Connected)
+        m_transport->write(bytes);
+}
+
 void TerminalView::clearScreen()
 {
     m_session->emulation()->clearEntireScreen();
@@ -335,6 +404,66 @@ void TerminalView::ensureCorrectSize(const QSize &size)
 
 bool TerminalView::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == m_statusBarWidget) {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto *e = static_cast<QMouseEvent *>(event);
+            if (e->button() == Qt::LeftButton) {
+                m_dragArmed = true;
+                m_dragPressPos = e->pos();
+                return true;
+            }
+            break;
+        }
+        case QEvent::MouseMove: {
+            auto *e = static_cast<QMouseEvent *>(event);
+            if (m_dragArmed && (e->buttons() & Qt::LeftButton) && (e->pos() - m_dragPressPos).manhattanLength() >= QApplication::startDragDistance()) {
+                m_dragArmed = false;
+                startPaneDrag();
+                return true;
+            }
+            break;
+        }
+        case QEvent::MouseButtonRelease:
+            m_dragArmed = false;
+            break;
+        default:
+            break;
+        }
+    }
+
+    // The terminal display accepts text/file drops itself (pasting them),
+    // so a dragged *pane* has to be picked off before it gets there; the
+    // other children (hex view, status strip) don't accept drops at all
+    // and let the drag bubble up to this widget's own handlers.
+    if (watched == m_display) {
+        switch (event->type()) {
+        case QEvent::DragEnter:
+        case QEvent::DragMove: {
+            auto *e = static_cast<QDropEvent *>(event);
+            if (isPaneDrag(e->mimeData())) {
+                e->acceptProposedAction();
+                showDropIndicator(m_display->mapTo(this, e->position().toPoint()));
+                return true;
+            }
+            break;
+        }
+        case QEvent::DragLeave:
+            hideDropIndicator();
+            break;
+        case QEvent::Drop: {
+            auto *e = static_cast<QDropEvent *>(event);
+            if (isPaneDrag(e->mimeData())) {
+                finishPaneDrop(e, m_display->mapTo(this, e->position().toPoint()));
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     if (watched == m_display && event->type() == QEvent::KeyPress) {
         switch (static_cast<QKeyEvent *>(event)->key()) {
         case Qt::Key_Copy:
@@ -348,6 +477,135 @@ bool TerminalView::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+bool TerminalView::isPaneDrag(const QMimeData *mime) const
+{
+    return mime && mime->hasFormat(QLatin1String(kPaneMime)) && s_dragSource && s_dragSource != this;
+}
+
+void TerminalView::startPaneDrag()
+{
+    // Dragging a pane at the same moment it is being rebuilt is pointless
+    // and the source widget must outlive the drag.
+    QPointer<TerminalView> self(this);
+
+    auto *mime = new QMimeData;
+    mime->setData(QLatin1String(kPaneMime), QByteArray("pane"));
+
+    // A small, see-through snapshot of the pane follows the cursor.
+    QPixmap pixmap = grab().scaledToWidth(qMin(width(), 240), Qt::SmoothTransformation);
+    QPixmap faded(pixmap.size());
+    faded.fill(Qt::transparent);
+    {
+        QPainter p(&faded);
+        p.setOpacity(0.6);
+        p.drawPixmap(0, 0, pixmap);
+    }
+
+    auto *drag = new QDrag(this);
+    drag->setMimeData(mime);
+    drag->setPixmap(faded);
+    drag->setHotSpot(QPoint(faded.width() / 2, 10));
+
+    s_dragSource = this;
+    drag->exec(Qt::MoveAction);
+    if (!self)
+        return;
+    s_dragSource = nullptr;
+}
+
+PaneDropZone TerminalView::zoneAt(const QPoint &pos) const
+{
+    const qreal fx = qBound<qreal>(0, qreal(pos.x()) / qMax(1, width()), 1);
+    const qreal fy = qBound<qreal>(0, qreal(pos.y()) / qMax(1, height()), 1);
+
+    // The middle of the pane swaps; towards the edges the nearest one wins.
+    if (fx > 0.28 && fx < 0.72 && fy > 0.28 && fy < 0.72)
+        return PaneDropZone::Swap;
+
+    const qreal left = fx, right = 1 - fx, top = fy, bottom = 1 - fy;
+    const qreal nearest = qMin(qMin(left, right), qMin(top, bottom));
+    if (nearest == left)
+        return PaneDropZone::Left;
+    if (nearest == right)
+        return PaneDropZone::Right;
+    return nearest == top ? PaneDropZone::Top : PaneDropZone::Bottom;
+}
+
+void TerminalView::showDropIndicator(const QPoint &pos)
+{
+    if (!m_dropIndicator)
+        m_dropIndicator = new DropIndicator(this);
+
+    const PaneDropZone zone = zoneAt(pos);
+    const QRect r = rect();
+    const int halfW = r.width() / 2, halfH = r.height() / 2;
+    QRect zoneRect = r;
+    switch (zone) {
+    case PaneDropZone::Left: zoneRect = QRect(r.left(), r.top(), halfW, r.height()); break;
+    case PaneDropZone::Right: zoneRect = QRect(r.left() + halfW, r.top(), r.width() - halfW, r.height()); break;
+    case PaneDropZone::Top: zoneRect = QRect(r.left(), r.top(), r.width(), halfH); break;
+    case PaneDropZone::Bottom: zoneRect = QRect(r.left(), r.top() + halfH, r.width(), r.height() - halfH); break;
+    case PaneDropZone::Swap: zoneRect = r.adjusted(halfW / 4, halfH / 4, -halfW / 4, -halfH / 4); break;
+    }
+
+    auto *indicator = static_cast<DropIndicator *>(m_dropIndicator);
+    indicator->setLook(AppSettings::instance().resolvedActivePaneColor(palette()),
+                       zone == PaneDropZone::Swap ? QStringLiteral("Swap") : QString());
+    indicator->setGeometry(zoneRect);
+    indicator->show();
+    indicator->raise();
+}
+
+void TerminalView::hideDropIndicator()
+{
+    if (m_dropIndicator)
+        m_dropIndicator->hide();
+}
+
+void TerminalView::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (!isPaneDrag(event->mimeData())) {
+        event->ignore();
+        return;
+    }
+    event->acceptProposedAction();
+    showDropIndicator(event->position().toPoint());
+}
+
+void TerminalView::dragMoveEvent(QDragMoveEvent *event)
+{
+    if (!isPaneDrag(event->mimeData())) {
+        event->ignore();
+        return;
+    }
+    event->acceptProposedAction();
+    showDropIndicator(event->position().toPoint());
+}
+
+void TerminalView::dragLeaveEvent(QDragLeaveEvent *event)
+{
+    hideDropIndicator();
+    QWidget::dragLeaveEvent(event);
+}
+
+void TerminalView::dropEvent(QDropEvent *event)
+{
+    if (!isPaneDrag(event->mimeData())) {
+        hideDropIndicator();
+        event->ignore();
+        return;
+    }
+    finishPaneDrop(event, event->position().toPoint());
+}
+
+void TerminalView::finishPaneDrop(QDropEvent *event, const QPoint &posInThis)
+{
+    hideDropIndicator();
+    const PaneDropZone zone = zoneAt(posInThis);
+    event->acceptProposedAction();
+    emit paneDropped(s_dragSource, zone);
 }
 
 void TerminalView::hookTransportSignals()
@@ -486,6 +744,44 @@ void TerminalView::doReconnectNow()
 
     replaceTransport(m_recreate());
     connectToHost();
+}
+
+void TerminalView::respawn()
+{
+    if (!canRespawn())
+        return;
+
+    // A fresh terminal: drop the previous session's output (screen and
+    // scrollback, or the hex dump) rather than stacking the new one under it.
+    // A session log file, if any, is left alone.
+    if (m_hexMode)
+        m_hexView->clear();
+    else
+        clearBuffer();
+
+    doReconnectNow();
+}
+
+bool TerminalView::reconfigure(Transport *transport, TransportFactory recreate, std::optional<SshConnectionSettings> sshSettings,
+                               std::optional<ConnectionProfile> sessionSnapshot)
+{
+    // Same reason as doReconnectNow(): never tear down a mid-connect Transport.
+    if (!canRespawn())
+        return false;
+
+    m_recreate = std::move(recreate);
+    m_sshSettings = std::move(sshSettings);
+    m_sessionSnapshot = std::move(sessionSnapshot);
+
+    m_countdownTimer->stop();
+    m_reconnectTimer->stop();
+    hideOverlay();
+    m_gaveUp = false;
+    m_attempt = 0;
+
+    replaceTransport(transport);
+    connectToHost();
+    return true;
 }
 
 void TerminalView::cancelReconnect()
@@ -658,7 +954,7 @@ void TerminalView::closeFindBar()
         window->scrollToEnd();
     }
 
-    m_display->setFocus();
+    setFocus(); // the focus proxy: the terminal display, or the hex view
 }
 
 void TerminalView::performSearch(bool forwards)
@@ -666,15 +962,21 @@ void TerminalView::performSearch(bool forwards)
     if (!m_findBar || m_findEdit->text().isEmpty())
         return;
 
-    Konsole::ScreenWindow *window = m_display->screenWindow();
-    if (!window)
-        return;
-
     const QRegularExpression regex(m_findEdit->text(), QRegularExpression::CaseInsensitiveOption);
     if (!regex.isValid()) {
         m_findStatusLabel->setText(QStringLiteral("Invalid pattern"));
         return;
     }
+
+    // A hex pane has no VT100 buffer - it searches the dump's own text.
+    if (m_hexMode) {
+        m_findStatusLabel->setText(m_hexView->find(regex, forwards) ? QString() : QStringLiteral("No matches"));
+        return;
+    }
+
+    Konsole::ScreenWindow *window = m_display->screenWindow();
+    if (!window)
+        return;
 
     const int startColumn = m_hasMatch ? (forwards ? m_matchEndColumn : m_matchStartColumn) : 0;
     const int startLine = m_hasMatch ? (forwards ? m_matchEndLine : m_matchStartLine) : (forwards ? 0 : window->lineCount() - 1);

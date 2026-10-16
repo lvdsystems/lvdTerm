@@ -50,3 +50,18 @@ bool TelnetConnectDialog::rawMode() const
 {
     return m_rawModeCheck->isChecked();
 }
+
+void TelnetConnectDialog::setHost(const QString &host)
+{
+    m_hostEdit->setText(host);
+}
+
+void TelnetConnectDialog::setPort(quint16 port)
+{
+    m_portSpin->setValue(port);
+}
+
+void TelnetConnectDialog::setRawMode(bool raw)
+{
+    m_rawModeCheck->setChecked(raw);
+}

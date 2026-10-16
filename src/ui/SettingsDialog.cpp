@@ -9,16 +9,19 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QListWidget>
 #include <QLabel>
 #include <QMenu>
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QVBoxLayout>
 
 #include "app/Theme.h"
 #include "core/AppSettings.h"
+#include "ShortcutsPage.h"
 #include "terminal/ColorSchemes.h"
 #include "terminal/KeyboardProfiles.h"
 
@@ -93,7 +96,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     connect(m_gapSpin, &QSpinBox::valueChanged, this, &SettingsDialog::applyPaneAppearance);
 
     // --- Mouse
-    m_rightClickCombo->addItem(QStringLiteral("Show the pane menu (split, close, copy, paste)"), static_cast<int>(AppSettings::RightClickAction::ShowMenu));
+    m_rightClickCombo->addItem(QStringLiteral("Show the pane menu"), static_cast<int>(AppSettings::RightClickAction::ShowMenu));
     m_rightClickCombo->addItem(QStringLiteral("Paste straight away"), static_cast<int>(AppSettings::RightClickAction::Paste));
     m_rightClickCombo->setCurrentIndex(qMax(0, m_rightClickCombo->findData(static_cast<int>(AppSettings::instance().rightClickAction()))));
     connect(m_rightClickCombo, &QComboBox::currentIndexChanged, this, &SettingsDialog::applyRightClickAction);
@@ -130,9 +133,33 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
 
+    // Sections down the left, one page each on the right. "General" is the
+    // form above; Keyboard Shortcuts is a page of its own (ShortcutsPage).
+    auto *generalPage = new QWidget(this);
+    auto *generalLayout = new QVBoxLayout(generalPage);
+    generalLayout->setContentsMargins(0, 0, 0, 0);
+    generalLayout->addLayout(form);
+    generalLayout->addStretch();
+
+    auto *pages = new QStackedWidget(this);
+    pages->addWidget(generalPage);
+    pages->addWidget(new ShortcutsPage(this));
+
+    auto *sections = new QListWidget(this);
+    sections->addItems({QStringLiteral("General"), QStringLiteral("Keyboard Shortcuts")});
+    sections->setFixedWidth(170);
+    sections->setCurrentRow(0);
+    connect(sections, &QListWidget::currentRowChanged, pages, &QStackedWidget::setCurrentIndex);
+
+    auto *body = new QHBoxLayout();
+    body->addWidget(sections);
+    body->addWidget(pages, 1);
+
     auto *layout = new QVBoxLayout(this);
-    layout->addLayout(form);
+    layout->addLayout(body, 1);
     layout->addWidget(buttons);
+
+    resize(780, 540);
 }
 
 void SettingsDialog::applyTheme()

@@ -18,6 +18,11 @@ SshConnectDialog::SshConnectDialog(QWidget *parent) : QDialog(parent), m_widget(
     layout->addWidget(buttons);
 }
 
+void SshConnectDialog::setSettings(const SshConnectionSettings &settings)
+{
+    m_widget->setSettings(settings);
+}
+
 SshConnectionSettings SshConnectDialog::settings() const
 {
     return m_widget->settings();

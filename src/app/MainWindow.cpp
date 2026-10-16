@@ -10,6 +10,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPushButton>
 #include <QPointer>
 #include <QShowEvent>
 #include <QSplitter>
@@ -20,6 +21,7 @@
 #include <QTimer>
 
 #include "core/ProfileStore.h"
+#include "core/ShortcutManager.h"
 #include "core/StateIcon.h"
 #include "terminal/TerminalView.h"
 #include "transports/loopback/LoopbackTransport.h"
@@ -168,29 +170,33 @@ void MainWindow::createMenus()
     QMenu *connectionMenu = menuBar()->addMenu(QStringLiteral("&Connection"));
 
     m_newLocalAction = connectionMenu->addAction(QStringLiteral("New &Local Terminal"));
-    m_newLocalAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+T")));
+    registerCommand(QStringLiteral("connection.newLocal"), m_newLocalAction);
     connect(m_newLocalAction, &QAction::triggered, this, &MainWindow::newLocalTerminal);
 
     connectionMenu->addSeparator();
 
     QAction *serialAction = connectionMenu->addAction(QStringLiteral("New &Serial Connection..."));
+    registerCommand(QStringLiteral("connection.newSerial"), serialAction);
     connect(serialAction, &QAction::triggered, this, &MainWindow::newSerialConnection);
 
     QAction *telnetAction = connectionMenu->addAction(QStringLiteral("New &Telnet Connection..."));
+    registerCommand(QStringLiteral("connection.newTelnet"), telnetAction);
     connect(telnetAction, &QAction::triggered, this, &MainWindow::newTelnetConnection);
 
     QAction *sshAction = connectionMenu->addAction(QStringLiteral("New SS&H Connection..."));
+    registerCommand(QStringLiteral("connection.newSsh"), sshAction);
     connect(sshAction, &QAction::triggered, this, &MainWindow::newSshConnection);
 
     connectionMenu->addSeparator();
 
     QAction *loopbackAction = connectionMenu->addAction(QStringLiteral("New &Loopback (test)"));
+    registerCommand(QStringLiteral("connection.newLoopback"), loopbackAction);
     connect(loopbackAction, &QAction::triggered, this, &MainWindow::addLoopbackTab);
 
     connectionMenu->addSeparator();
 
     m_closeTabAction = connectionMenu->addAction(QStringLiteral("&Close Pane / Tab"));
-    m_closeTabAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+W")));
+    registerCommand(QStringLiteral("connection.closeTab"), m_closeTabAction);
     connect(m_closeTabAction, &QAction::triggered, this, &MainWindow::confirmCloseActivePane);
 
     // No "Pane" menu - these actions live only on `this` (so their
@@ -198,31 +204,29 @@ void MainWindow::createMenus()
     // (see showTabContextMenu()), per the plan's replace-not-supplement
     // decision.
     m_splitRightAction = new QAction(QStringLiteral("Split &Right"), this);
-    m_splitRightAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
+    registerCommand(QStringLiteral("pane.splitRight"), m_splitRightAction);
     connect(m_splitRightAction, &QAction::triggered, this, [this] { splitActivePane(Qt::Horizontal); });
-    addAction(m_splitRightAction);
 
     m_splitDownAction = new QAction(QStringLiteral("Split &Down"), this);
-    m_splitDownAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+D")));
+    registerCommand(QStringLiteral("pane.splitDown"), m_splitDownAction);
     connect(m_splitDownAction, &QAction::triggered, this, [this] { splitActivePane(Qt::Vertical); });
-    addAction(m_splitDownAction);
 
     m_closePaneAction = new QAction(QStringLiteral("&Close Pane"), this);
-    m_closePaneAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+W")));
+    registerCommand(QStringLiteral("pane.close"), m_closePaneAction);
     connect(m_closePaneAction, &QAction::triggered, this, &MainWindow::closeActivePane);
-    addAction(m_closePaneAction);
 
     m_findAction = new QAction(QStringLiteral("&Find in Scrollback..."), this);
-    m_findAction->setShortcut(QKeySequence::Find);
+    // Terminal-only: while focus is elsewhere (the SFTP list, the connection
+    // tree) the key goes to that widget instead.
+    registerCommand(QStringLiteral("terminal.find"), m_findAction, true);
     connect(m_findAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->showFindBar();
     });
-    addAction(m_findAction);
 
     m_logAction = new QAction(QStringLiteral("&Log Session to File..."), this);
+    registerCommand(QStringLiteral("terminal.log"), m_logAction);
     connect(m_logAction, &QAction::triggered, this, &MainWindow::toggleSessionLogging);
-    addAction(m_logAction);
 
     // Unlike the actions above (kept off a menu deliberately, see the
     // comment there), this one *is* a real menu per your request - greyed
@@ -232,12 +236,14 @@ void MainWindow::createMenus()
     m_terminalMenuAction->setEnabled(false);
 
     QAction *clearBufferAction = terminalMenu->addAction(QStringLiteral("Clear &Buffer"));
+    registerCommand(QStringLiteral("terminal.clearBuffer"), clearBufferAction, true);
     connect(clearBufferAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->clearBuffer();
     });
 
     QAction *clearScreenAction = terminalMenu->addAction(QStringLiteral("Clear &Screen"));
+    registerCommand(QStringLiteral("terminal.clearScreen"), clearScreenAction, true);
     connect(clearScreenAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->clearScreen();
@@ -246,12 +252,14 @@ void MainWindow::createMenus()
     terminalMenu->addSeparator();
 
     QAction *copyAction = terminalMenu->addAction(QStringLiteral("&Copy"));
+    registerCommand(QStringLiteral("terminal.copy"), copyAction, true);
     connect(copyAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->copySelection();
     });
 
     QAction *pasteAction = terminalMenu->addAction(QStringLiteral("&Paste"));
+    registerCommand(QStringLiteral("terminal.paste"), pasteAction, true);
     connect(pasteAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->pasteFromClipboard();
@@ -268,6 +276,10 @@ void MainWindow::createMenus()
         SettingsDialog dialog(this);
         dialog.exec();
     });
+
+    // Keys changed on the Keyboard Shortcuts page apply to the running window.
+    connect(&ShortcutManager::instance(), &ShortcutManager::shortcutsChanged, this, &MainWindow::applyShortcuts);
+    rebuildCustomShortcuts();
 
     // The gap between split panes is a property of every splitter in
     // every tab - resize them all live as the setting changes.
@@ -286,6 +298,59 @@ void MainWindow::createMenus()
         AboutDialog dialog(this);
         dialog.exec();
     });
+}
+
+void MainWindow::registerCommand(const QString &id, QAction *action, bool terminalOnly)
+{
+    m_commandActions.insert(id, action);
+    action->setShortcut(ShortcutManager::instance().sequence(id));
+    // On the window itself too (not only in a menu), so the key works
+    // whatever state its menu is in.
+    addAction(action);
+    if (terminalOnly) {
+        m_terminalOnlyActions.append(action);
+        action->setEnabled(m_terminalFocused);
+    }
+}
+
+void MainWindow::applyShortcuts()
+{
+    const ShortcutManager &manager = ShortcutManager::instance();
+    for (auto it = m_commandActions.cbegin(); it != m_commandActions.cend(); ++it)
+        it.value()->setShortcut(manager.sequence(it.key()));
+    rebuildCustomShortcuts();
+}
+
+void MainWindow::rebuildCustomShortcuts()
+{
+    for (QAction *action : std::as_const(m_customActions)) {
+        m_terminalOnlyActions.removeAll(action);
+        delete action;
+    }
+    m_customActions.clear();
+
+    for (const CustomShortcut &custom : ShortcutManager::instance().customShortcuts()) {
+        if (custom.sequence.isEmpty())
+            continue;
+
+        auto *action = new QAction(custom.name, this);
+        action->setShortcut(custom.sequence);
+        connect(action, &QAction::triggered, this, [this, text = custom.text, appendEnter = custom.appendEnter] {
+            if (TerminalView *view = currentActiveView())
+                view->sendBytes(ShortcutManager::decodeText(text) + (appendEnter ? QByteArray("\r") : QByteArray()));
+        });
+        addAction(action);
+        action->setEnabled(m_terminalFocused);
+        m_terminalOnlyActions.append(action);
+        m_customActions.append(action);
+    }
+}
+
+void MainWindow::setTerminalFocused(bool focused)
+{
+    m_terminalFocused = focused;
+    for (QAction *action : std::as_const(m_terminalOnlyActions))
+        action->setEnabled(focused);
 }
 
 void MainWindow::toggleSessionLogging()
@@ -497,6 +562,14 @@ TerminalView *MainWindow::makeView(const NewConnectionResult &result)
         statusBar()->showMessage(QStringLiteral("%1: %2").arg(title, message), 5000);
     });
     connect(view, &TerminalView::contextMenuRequested, this, [this, view](const QPoint &globalPos) { showPaneContextMenu(view, globalPos); });
+    // Deferred a turn: the drag that produced this drop is still running its
+    // event loop on the source pane's stack.
+    connect(view, &TerminalView::paneDropped, this, [this, view](TerminalView *source, PaneDropZone zone) {
+        QTimer::singleShot(0, this, [this, source = QPointer<TerminalView>(source), target = QPointer<TerminalView>(view), zone] {
+            if (source && target)
+                movePane(source, target, zone);
+        });
+    });
     connect(view, &TerminalView::stateChanged, this, [this, view] {
         if (QWidget *root = tabRootOf(view))
             updateTabIcon(root);
@@ -517,17 +590,56 @@ void MainWindow::showPaneContextMenu(TerminalView *view, const QPoint &globalPos
 
     QMenu menu(this);
 
+    // "<text>\t<keys>" is a right-aligned shortcut hint (the real shortcuts
+    // live on the QActions); it follows whatever the user has set.
+    const ShortcutManager &shortcuts = ShortcutManager::instance();
+    auto hinted = [&shortcuts](const QString &text, const QString &id) {
+        const QKeySequence keys = shortcuts.sequence(id);
+        return keys.isEmpty() ? text : text + QLatin1Char('\t') + keys.toString(QKeySequence::NativeText);
+    };
+
     if (!view->isHexMode()) {
-        connect(menu.addAction(QStringLiteral("Copy")), &QAction::triggered, view, &TerminalView::copySelection);
-        connect(menu.addAction(QStringLiteral("Paste")), &QAction::triggered, view, &TerminalView::pasteFromClipboard);
+        connect(menu.addAction(hinted(QStringLiteral("Copy"), QStringLiteral("terminal.copy"))), &QAction::triggered, view, &TerminalView::copySelection);
+        connect(menu.addAction(hinted(QStringLiteral("Paste"), QStringLiteral("terminal.paste"))), &QAction::triggered, view, &TerminalView::pasteFromClipboard);
         menu.addSeparator();
     }
 
-    // "\t<keys>" is just a right-aligned shortcut hint: the real
-    // shortcuts live on m_splitRightAction/m_splitDownAction.
-    connect(menu.addAction(QStringLiteral("Split Horizontally\tCtrl+Shift+R")), &QAction::triggered, this,
+    // Both rebuild this pane's Transport, which isn't safe mid-connect (see
+    // TerminalView::doReconnectNow()), so they're greyed out meanwhile.
+    QAction *respawnAction = menu.addAction(QStringLiteral("Respawn Terminal"));
+    respawnAction->setEnabled(view->canRespawn());
+    // Confirmed first: it closes the live connection and wipes the terminal's output.
+    // Deferred a turn: the dialog is modal and shouldn't run inside this menu's exec().
+    connect(respawnAction, &QAction::triggered, this, [this, view = QPointer<TerminalView>(view)] {
+        QTimer::singleShot(0, this, [this, view] {
+            if (!view)
+                return;
+            QMessageBox box(QMessageBox::Question, QStringLiteral("Respawn Terminal"),
+                            QStringLiteral("Respawn this terminal?\n\nThe current connection is closed, a new one is started "
+                                           "with the same settings, and the terminal's current output is cleared."),
+                            QMessageBox::NoButton, this);
+            QPushButton *confirm = box.addButton(QStringLiteral("Respawn"), QMessageBox::AcceptRole);
+            box.addButton(QMessageBox::Cancel);
+            box.setDefaultButton(QMessageBox::Cancel);
+            box.exec();
+            if (box.clickedButton() == confirm && view)
+                view->respawn();
+        });
+    });
+
+    // Loopback has no snapshot (and no settings to change).
+    QAction *settingsAction = menu.addAction(QStringLiteral("Change Settings..."));
+    settingsAction->setEnabled(view->canRespawn() && view->sessionSnapshot().has_value());
+    // Deferred a turn: the dialog is modal and shouldn't run inside this menu's exec().
+    connect(settingsAction, &QAction::triggered, this,
+            [this, view = QPointer<TerminalView>(view)] { QTimer::singleShot(0, this, [this, view] { if (view) changePaneSettings(view); }); });
+
+    menu.addSeparator();
+
+    connect(menu.addAction(hinted(QStringLiteral("Split Horizontally"), QStringLiteral("pane.splitRight"))), &QAction::triggered, this,
             [this] { splitActivePane(Qt::Horizontal); });
-    connect(menu.addAction(QStringLiteral("Split Vertically\tCtrl+Shift+D")), &QAction::triggered, this, [this] { splitActivePane(Qt::Vertical); });
+    connect(menu.addAction(hinted(QStringLiteral("Split Vertically"), QStringLiteral("pane.splitDown"))), &QAction::triggered, this,
+            [this] { splitActivePane(Qt::Vertical); });
 
     menu.addSeparator();
 
@@ -537,6 +649,98 @@ void MainWindow::showPaneContextMenu(TerminalView *view, const QPoint &globalPos
             [this, view] { QTimer::singleShot(0, this, [this, view = QPointer<TerminalView>(view)] { if (view) confirmClosePane(view); }); });
 
     menu.exec(globalPos);
+}
+
+void MainWindow::changePaneSettings(TerminalView *view)
+{
+    if (!view->sessionSnapshot() || !view->canRespawn())
+        return;
+
+    // Only the protocol fields are edited; everything else about the pane
+    // (keyboard profile, logging, viewer, name) carries over. This changes
+    // the running pane only - a saved profile it was opened from is untouched.
+    ConnectionProfile profile = *view->sessionSnapshot();
+    const QString oldAutoName = profile.name;
+
+    switch (profile.type) {
+    case ConnectionProfile::Type::Serial: {
+        SerialConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change Serial Settings"));
+        dialog.setSettings(profile.serial);
+        if (dialog.exec() != QDialog::Accepted || dialog.settings().portName.isEmpty())
+            return;
+        profile.serial = dialog.settings();
+        break;
+    }
+    case ConnectionProfile::Type::Telnet: {
+        TelnetConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change Telnet Settings"));
+        dialog.setHost(profile.telnetHost);
+        dialog.setPort(profile.telnetPort);
+        dialog.setRawMode(profile.rawMode);
+        if (dialog.exec() != QDialog::Accepted || dialog.host().isEmpty())
+            return;
+        profile.telnetHost = dialog.host();
+        profile.telnetPort = dialog.port();
+        profile.rawMode = dialog.rawMode();
+        break;
+    }
+    case ConnectionProfile::Type::Ssh: {
+        SshConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change SSH Settings"));
+        dialog.setSettings(profile.ssh);
+        if (dialog.exec() != QDialog::Accepted)
+            return;
+        const SshConnectionSettings s = dialog.settings();
+        if (s.host.isEmpty() || (s.username.isEmpty() && !s.promptForUsername))
+            return;
+        profile.ssh = s;
+        break;
+    }
+    case ConnectionProfile::Type::Local: {
+        bool ok = false;
+        const QString shell = QInputDialog::getText(this, QStringLiteral("Change Local Shell"),
+                                                    QStringLiteral("Shell program (empty = platform default):"), QLineEdit::Normal,
+                                                    profile.localShell, &ok);
+        if (!ok)
+            return;
+        profile.localShell = shell.trimmed();
+        break;
+    }
+    }
+
+    // Keep an auto-generated name (user@host, COM3, host:port) in step with
+    // the new settings; a name the user chose (saved profile, renamed tab)
+    // is left alone.
+    QString newAutoName;
+    switch (profile.type) {
+    case ConnectionProfile::Type::Serial: newAutoName = profile.serial.portName; break;
+    case ConnectionProfile::Type::Telnet: newAutoName = QStringLiteral("%1:%2").arg(profile.telnetHost).arg(profile.telnetPort); break;
+    case ConnectionProfile::Type::Ssh: newAutoName = QStringLiteral("%1@%2").arg(profile.ssh.username, profile.ssh.host); break;
+    case ConnectionProfile::Type::Local: break;
+    }
+    const int tabIndex = m_tabs->indexOf(view);
+    const bool nameWasAuto = tabIndex >= 0 && m_tabs->tabText(tabIndex) == oldAutoName;
+    if (nameWasAuto && !newAutoName.isEmpty())
+        profile.name = newAutoName;
+
+    // Also resolves SSH "ask each time" credentials.
+    auto result = resultForProfile(profile);
+    if (!result)
+        return;
+
+    if (!view->reconfigure(result->transport, result->recreate, result->sshSettings, result->snapshot)) {
+        delete result->transport;
+        return;
+    }
+
+    if (nameWasAuto && !newAutoName.isEmpty())
+        m_tabs->setTabText(tabIndex, newAutoName);
+
+    if (view == m_activeView)
+        m_sftpDock->setActiveConnection(view->sshSettings());
+    if (QWidget *root = tabRootOf(view))
+        updateTabIcon(root);
 }
 
 QWidget *MainWindow::tabRootOf(QWidget *w) const
@@ -575,6 +779,7 @@ void MainWindow::onFocusChanged(QWidget * /*old*/, QWidget *now)
     // say, the SFTP dock itself now has focus.
     if (m_terminalMenuAction)
         m_terminalMenuAction->setEnabled(focusedView != nullptr);
+    setTerminalFocused(focusedView != nullptr);
 
     if (focusedView) {
         m_activeView = focusedView;
@@ -607,6 +812,80 @@ TerminalView *MainWindow::currentActiveView() const
     }
 
     return nullptr;
+}
+
+void MainWindow::movePane(TerminalView *source, TerminalView *target, PaneDropZone zone)
+{
+    // Panes only move within their own tab (only one tab is ever on screen
+    // while dragging), and both must sit in a splitter - which any tab with
+    // two panes guarantees.
+    auto *sourceSplitter = qobject_cast<QSplitter *>(source->parentWidget());
+    auto *targetSplitter = qobject_cast<QSplitter *>(target->parentWidget());
+    if (source == target || !sourceSplitter || !targetSplitter || tabRootOf(source) != tabRootOf(target))
+        return;
+
+    if (zone == PaneDropZone::Swap) {
+        // A placeholder keeps the first slot open while the second one is
+        // filled; replaceWidget() keeps each slot's size.
+        auto *placeholder = new QWidget;
+        sourceSplitter->replaceWidget(sourceSplitter->indexOf(source), placeholder);
+        targetSplitter->replaceWidget(targetSplitter->indexOf(target), source);
+        sourceSplitter->replaceWidget(sourceSplitter->indexOf(placeholder), target);
+        delete placeholder;
+        source->show(); // replaceWidget() reparents, which hides - see splitActivePane()
+        target->show();
+    } else {
+        const Qt::Orientation orientation = (zone == PaneDropZone::Left || zone == PaneDropZone::Right) ? Qt::Horizontal : Qt::Vertical;
+        const bool after = zone == PaneDropZone::Right || zone == PaneDropZone::Bottom;
+
+        // Out of the old place first. That can collapse a splitter that
+        // held only these two, which re-parents `target` - so its parent is
+        // looked up again afterwards.
+        source->setParent(nullptr); // synchronously drops sourceSplitter's count
+        collapseSplitterIfSingle(sourceSplitter);
+
+        QWidget *parent = target->parentWidget();
+        if (auto *splitter = qobject_cast<QSplitter *>(parent); splitter && splitter->orientation() == orientation) {
+            // Same direction as the target's own splitter: join it rather than nest.
+            const int index = splitter->indexOf(target);
+            QList<int> sizes = splitter->sizes();
+            const int half = sizes.value(index) / 2;
+            splitter->insertWidget(after ? index + 1 : index, source);
+            if (half > 0) {
+                sizes[index] = sizes.value(index) - half;
+                sizes.insert(after ? index + 1 : index, half);
+                splitter->setSizes(sizes);
+            }
+        } else {
+            auto *wrapper = new PaneSplitter(orientation);
+            if (auto *parentSplitter = qobject_cast<QSplitter *>(parent)) {
+                const int index = parentSplitter->indexOf(target);
+                const QList<int> sizes = parentSplitter->sizes();
+                wrapper->addWidget(target); // reparents target out of parentSplitter
+                wrapper->insertWidget(after ? 1 : 0, source);
+                parentSplitter->insertWidget(index, wrapper);
+                parentSplitter->setSizes(sizes);
+            } else {
+                const int tabIndex = m_tabs->indexOf(target);
+                const QString tabTitle = m_tabs->tabText(tabIndex);
+                const QIcon tabIcon = m_tabs->tabIcon(tabIndex);
+                m_tabs->removeTab(tabIndex);
+                wrapper->addWidget(target);
+                wrapper->insertWidget(after ? 1 : 0, source);
+                m_tabs->insertTab(tabIndex, wrapper, tabIcon, tabTitle);
+                m_tabs->setCurrentIndex(tabIndex);
+            }
+            wrapper->show();
+        }
+        source->show();
+        target->show();
+    }
+
+    m_activeView = source;
+    source->setFocus();
+    if (QWidget *root = tabRootOf(source))
+        updateTabIcon(root);
+    updatePaneFrames();
 }
 
 void MainWindow::splitActivePane(Qt::Orientation orientation)

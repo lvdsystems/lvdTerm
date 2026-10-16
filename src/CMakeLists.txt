@@ -34,6 +34,8 @@ add_executable(lvdterm WIN32
     core/StateIcon.cpp
     core/StateIcon.h
     core/ReconnectPolicy.h
+    core/ShortcutManager.cpp
+    core/ShortcutManager.h
     core/ThreadReaper.cpp
     core/ThreadReaper.h
     core/Transport.h
@@ -69,6 +71,8 @@ add_executable(lvdterm WIN32
     ui/SerialSettingsWidget.h
     ui/SettingsDialog.cpp
     ui/SettingsDialog.h
+    ui/ShortcutsPage.cpp
+    ui/ShortcutsPage.h
     ui/SftpDock.cpp
     ui/SftpDock.h
     ui/CodeEditor.cpp

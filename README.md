@@ -79,8 +79,9 @@ the view that actually makes sense for it:
   toolbar for everything else.
 - **Terminal niceties**: auto-copy on selection, right-click to paste, a
   status bar context menu (Reconnect / Clear Screen / Clear Buffer)
-  mirrored in a "Terminal" menu, Ctrl+F scrollback search, session
-  logging to a file (with an optional per-line timestamp), and selectable
+  mirrored in a "Terminal" menu, Ctrl+Shift+F scrollback search,
+  Ctrl+Shift+C/V copy/paste (every shortcut is rebindable under Settings >
+  Keyboard Shortcuts), session logging to a file (with an optional per-line timestamp), and selectable
   keyboard-emulation profiles (Default / Linux Console / VT100) for keys
   that differ between them (arrows, Home/End, function keys, Backspace).
 - **Hex viewer**: a per-connection alternative to the terminal for

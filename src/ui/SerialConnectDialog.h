@@ -18,6 +18,7 @@ public:
     explicit SerialConnectDialog(QWidget *parent = nullptr);
 
     SerialPortSettings settings() const;
+    void setSettings(const SerialPortSettings &settings);
 
 private:
     SerialSettingsWidget *m_widget = nullptr;
