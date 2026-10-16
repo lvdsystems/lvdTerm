@@ -3,6 +3,8 @@
 #include <functional>
 #include <optional>
 
+#include <QHash>
+#include <QList>
 #include <QMainWindow>
 
 #include "core/ConnectionProfile.h"
@@ -11,6 +13,7 @@
 #include "terminal/PaneDropZone.h"
 #include "transports/ssh/SshConnectionSettings.h"
 
+class QAction;
 class QCloseEvent;
 class QShowEvent;
 
@@ -57,6 +60,15 @@ private:
     };
 
     void createMenus();
+
+    // Keyboard shortcuts (see ShortcutManager): every command's key comes
+    // from there and is re-applied live when the Keyboard Shortcuts page
+    // changes one. `terminalOnly` commands are only enabled while a terminal
+    // pane has keyboard focus, so their keys reach other widgets otherwise.
+    void registerCommand(const QString &id, QAction *action, bool terminalOnly = false);
+    void applyShortcuts();
+    void rebuildCustomShortcuts(); // the user's "send text" shortcuts
+    void setTerminalFocused(bool focused);
     void addLoopbackTab();
     void newSerialConnection();
     void newTelnetConnection();
@@ -141,4 +153,9 @@ private:
     // pane actually has focus, unlike m_activeView above which deliberately
     // stays sticky after focus moves elsewhere (see onFocusChanged()).
     QAction *m_terminalMenuAction = nullptr;
+
+    QHash<QString, QAction *> m_commandActions; // ShortcutManager command id -> its action
+    QList<QAction *> m_terminalOnlyActions; // enabled only while a terminal pane has focus
+    QList<QAction *> m_customActions; // the current custom shortcuts' actions (also in the list above)
+    bool m_terminalFocused = false;
 };

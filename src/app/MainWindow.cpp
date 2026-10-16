@@ -21,6 +21,7 @@
 #include <QTimer>
 
 #include "core/ProfileStore.h"
+#include "core/ShortcutManager.h"
 #include "core/StateIcon.h"
 #include "terminal/TerminalView.h"
 #include "transports/loopback/LoopbackTransport.h"
@@ -169,29 +170,33 @@ void MainWindow::createMenus()
     QMenu *connectionMenu = menuBar()->addMenu(QStringLiteral("&Connection"));
 
     m_newLocalAction = connectionMenu->addAction(QStringLiteral("New &Local Terminal"));
-    m_newLocalAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+T")));
+    registerCommand(QStringLiteral("connection.newLocal"), m_newLocalAction);
     connect(m_newLocalAction, &QAction::triggered, this, &MainWindow::newLocalTerminal);
 
     connectionMenu->addSeparator();
 
     QAction *serialAction = connectionMenu->addAction(QStringLiteral("New &Serial Connection..."));
+    registerCommand(QStringLiteral("connection.newSerial"), serialAction);
     connect(serialAction, &QAction::triggered, this, &MainWindow::newSerialConnection);
 
     QAction *telnetAction = connectionMenu->addAction(QStringLiteral("New &Telnet Connection..."));
+    registerCommand(QStringLiteral("connection.newTelnet"), telnetAction);
     connect(telnetAction, &QAction::triggered, this, &MainWindow::newTelnetConnection);
 
     QAction *sshAction = connectionMenu->addAction(QStringLiteral("New SS&H Connection..."));
+    registerCommand(QStringLiteral("connection.newSsh"), sshAction);
     connect(sshAction, &QAction::triggered, this, &MainWindow::newSshConnection);
 
     connectionMenu->addSeparator();
 
     QAction *loopbackAction = connectionMenu->addAction(QStringLiteral("New &Loopback (test)"));
+    registerCommand(QStringLiteral("connection.newLoopback"), loopbackAction);
     connect(loopbackAction, &QAction::triggered, this, &MainWindow::addLoopbackTab);
 
     connectionMenu->addSeparator();
 
     m_closeTabAction = connectionMenu->addAction(QStringLiteral("&Close Pane / Tab"));
-    m_closeTabAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+W")));
+    registerCommand(QStringLiteral("connection.closeTab"), m_closeTabAction);
     connect(m_closeTabAction, &QAction::triggered, this, &MainWindow::confirmCloseActivePane);
 
     // No "Pane" menu - these actions live only on `this` (so their
@@ -199,31 +204,29 @@ void MainWindow::createMenus()
     // (see showTabContextMenu()), per the plan's replace-not-supplement
     // decision.
     m_splitRightAction = new QAction(QStringLiteral("Split &Right"), this);
-    m_splitRightAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")));
+    registerCommand(QStringLiteral("pane.splitRight"), m_splitRightAction);
     connect(m_splitRightAction, &QAction::triggered, this, [this] { splitActivePane(Qt::Horizontal); });
-    addAction(m_splitRightAction);
 
     m_splitDownAction = new QAction(QStringLiteral("Split &Down"), this);
-    m_splitDownAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+D")));
+    registerCommand(QStringLiteral("pane.splitDown"), m_splitDownAction);
     connect(m_splitDownAction, &QAction::triggered, this, [this] { splitActivePane(Qt::Vertical); });
-    addAction(m_splitDownAction);
 
     m_closePaneAction = new QAction(QStringLiteral("&Close Pane"), this);
-    m_closePaneAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+W")));
+    registerCommand(QStringLiteral("pane.close"), m_closePaneAction);
     connect(m_closePaneAction, &QAction::triggered, this, &MainWindow::closeActivePane);
-    addAction(m_closePaneAction);
 
     m_findAction = new QAction(QStringLiteral("&Find in Scrollback..."), this);
-    m_findAction->setShortcut(QKeySequence::Find);
+    // Terminal-only: while focus is elsewhere (the SFTP list, the connection
+    // tree) the key goes to that widget instead.
+    registerCommand(QStringLiteral("terminal.find"), m_findAction, true);
     connect(m_findAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->showFindBar();
     });
-    addAction(m_findAction);
 
     m_logAction = new QAction(QStringLiteral("&Log Session to File..."), this);
+    registerCommand(QStringLiteral("terminal.log"), m_logAction);
     connect(m_logAction, &QAction::triggered, this, &MainWindow::toggleSessionLogging);
-    addAction(m_logAction);
 
     // Unlike the actions above (kept off a menu deliberately, see the
     // comment there), this one *is* a real menu per your request - greyed
@@ -233,12 +236,14 @@ void MainWindow::createMenus()
     m_terminalMenuAction->setEnabled(false);
 
     QAction *clearBufferAction = terminalMenu->addAction(QStringLiteral("Clear &Buffer"));
+    registerCommand(QStringLiteral("terminal.clearBuffer"), clearBufferAction, true);
     connect(clearBufferAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->clearBuffer();
     });
 
     QAction *clearScreenAction = terminalMenu->addAction(QStringLiteral("Clear &Screen"));
+    registerCommand(QStringLiteral("terminal.clearScreen"), clearScreenAction, true);
     connect(clearScreenAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->clearScreen();
@@ -247,12 +252,14 @@ void MainWindow::createMenus()
     terminalMenu->addSeparator();
 
     QAction *copyAction = terminalMenu->addAction(QStringLiteral("&Copy"));
+    registerCommand(QStringLiteral("terminal.copy"), copyAction, true);
     connect(copyAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->copySelection();
     });
 
     QAction *pasteAction = terminalMenu->addAction(QStringLiteral("&Paste"));
+    registerCommand(QStringLiteral("terminal.paste"), pasteAction, true);
     connect(pasteAction, &QAction::triggered, this, [this] {
         if (TerminalView *view = currentActiveView())
             view->pasteFromClipboard();
@@ -269,6 +276,10 @@ void MainWindow::createMenus()
         SettingsDialog dialog(this);
         dialog.exec();
     });
+
+    // Keys changed on the Keyboard Shortcuts page apply to the running window.
+    connect(&ShortcutManager::instance(), &ShortcutManager::shortcutsChanged, this, &MainWindow::applyShortcuts);
+    rebuildCustomShortcuts();
 
     // The gap between split panes is a property of every splitter in
     // every tab - resize them all live as the setting changes.
@@ -287,6 +298,59 @@ void MainWindow::createMenus()
         AboutDialog dialog(this);
         dialog.exec();
     });
+}
+
+void MainWindow::registerCommand(const QString &id, QAction *action, bool terminalOnly)
+{
+    m_commandActions.insert(id, action);
+    action->setShortcut(ShortcutManager::instance().sequence(id));
+    // On the window itself too (not only in a menu), so the key works
+    // whatever state its menu is in.
+    addAction(action);
+    if (terminalOnly) {
+        m_terminalOnlyActions.append(action);
+        action->setEnabled(m_terminalFocused);
+    }
+}
+
+void MainWindow::applyShortcuts()
+{
+    const ShortcutManager &manager = ShortcutManager::instance();
+    for (auto it = m_commandActions.cbegin(); it != m_commandActions.cend(); ++it)
+        it.value()->setShortcut(manager.sequence(it.key()));
+    rebuildCustomShortcuts();
+}
+
+void MainWindow::rebuildCustomShortcuts()
+{
+    for (QAction *action : std::as_const(m_customActions)) {
+        m_terminalOnlyActions.removeAll(action);
+        delete action;
+    }
+    m_customActions.clear();
+
+    for (const CustomShortcut &custom : ShortcutManager::instance().customShortcuts()) {
+        if (custom.sequence.isEmpty())
+            continue;
+
+        auto *action = new QAction(custom.name, this);
+        action->setShortcut(custom.sequence);
+        connect(action, &QAction::triggered, this, [this, text = custom.text, appendEnter = custom.appendEnter] {
+            if (TerminalView *view = currentActiveView())
+                view->sendBytes(ShortcutManager::decodeText(text) + (appendEnter ? QByteArray("\r") : QByteArray()));
+        });
+        addAction(action);
+        action->setEnabled(m_terminalFocused);
+        m_terminalOnlyActions.append(action);
+        m_customActions.append(action);
+    }
+}
+
+void MainWindow::setTerminalFocused(bool focused)
+{
+    m_terminalFocused = focused;
+    for (QAction *action : std::as_const(m_terminalOnlyActions))
+        action->setEnabled(focused);
 }
 
 void MainWindow::toggleSessionLogging()
@@ -526,9 +590,17 @@ void MainWindow::showPaneContextMenu(TerminalView *view, const QPoint &globalPos
 
     QMenu menu(this);
 
+    // "<text>\t<keys>" is a right-aligned shortcut hint (the real shortcuts
+    // live on the QActions); it follows whatever the user has set.
+    const ShortcutManager &shortcuts = ShortcutManager::instance();
+    auto hinted = [&shortcuts](const QString &text, const QString &id) {
+        const QKeySequence keys = shortcuts.sequence(id);
+        return keys.isEmpty() ? text : text + QLatin1Char('\t') + keys.toString(QKeySequence::NativeText);
+    };
+
     if (!view->isHexMode()) {
-        connect(menu.addAction(QStringLiteral("Copy")), &QAction::triggered, view, &TerminalView::copySelection);
-        connect(menu.addAction(QStringLiteral("Paste")), &QAction::triggered, view, &TerminalView::pasteFromClipboard);
+        connect(menu.addAction(hinted(QStringLiteral("Copy"), QStringLiteral("terminal.copy"))), &QAction::triggered, view, &TerminalView::copySelection);
+        connect(menu.addAction(hinted(QStringLiteral("Paste"), QStringLiteral("terminal.paste"))), &QAction::triggered, view, &TerminalView::pasteFromClipboard);
         menu.addSeparator();
     }
 
@@ -564,11 +636,10 @@ void MainWindow::showPaneContextMenu(TerminalView *view, const QPoint &globalPos
 
     menu.addSeparator();
 
-    // "\t<keys>" is just a right-aligned shortcut hint: the real
-    // shortcuts live on m_splitRightAction/m_splitDownAction.
-    connect(menu.addAction(QStringLiteral("Split Horizontally\tCtrl+Shift+R")), &QAction::triggered, this,
+    connect(menu.addAction(hinted(QStringLiteral("Split Horizontally"), QStringLiteral("pane.splitRight"))), &QAction::triggered, this,
             [this] { splitActivePane(Qt::Horizontal); });
-    connect(menu.addAction(QStringLiteral("Split Vertically\tCtrl+Shift+D")), &QAction::triggered, this, [this] { splitActivePane(Qt::Vertical); });
+    connect(menu.addAction(hinted(QStringLiteral("Split Vertically"), QStringLiteral("pane.splitDown"))), &QAction::triggered, this,
+            [this] { splitActivePane(Qt::Vertical); });
 
     menu.addSeparator();
 
@@ -708,6 +779,7 @@ void MainWindow::onFocusChanged(QWidget * /*old*/, QWidget *now)
     // say, the SFTP dock itself now has focus.
     if (m_terminalMenuAction)
         m_terminalMenuAction->setEnabled(focusedView != nullptr);
+    setTerminalFocused(focusedView != nullptr);
 
     if (focusedView) {
         m_activeView = focusedView;

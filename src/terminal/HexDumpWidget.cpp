@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QTextCursor>
 #include <QVBoxLayout>
@@ -75,6 +76,24 @@ HexDumpWidget::HexDumpWidget(QWidget *parent) : QWidget(parent), m_textEdit(new 
     m_textEdit->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_textEdit, &QWidget::customContextMenuRequested, this,
             [this](const QPoint &pos) { emit contextMenuRequested(m_textEdit->mapToGlobal(pos)); });
+}
+
+bool HexDumpWidget::find(const QRegularExpression &regex, bool forwards)
+{
+    const QTextDocument::FindFlags flags = forwards ? QTextDocument::FindFlags() : QTextDocument::FindBackward;
+    if (m_textEdit->find(regex, flags))
+        return true;
+
+    // Nothing further on: wrap around to the other end, restoring the
+    // cursor if there is no match at all.
+    const QTextCursor original = m_textEdit->textCursor();
+    QTextCursor wrapped = original;
+    wrapped.movePosition(forwards ? QTextCursor::Start : QTextCursor::End);
+    m_textEdit->setTextCursor(wrapped);
+    if (m_textEdit->find(regex, flags))
+        return true;
+    m_textEdit->setTextCursor(original);
+    return false;
 }
 
 void HexDumpWidget::appendData(const QByteArray &data)

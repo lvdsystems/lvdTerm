@@ -292,10 +292,6 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     if (!m_hexMode)
         m_display->installEventFilter(this);
 
-    auto *findShortcut = new QShortcut(QKeySequence::Find, this);
-    findShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(findShortcut, &QShortcut::activated, this, &TerminalView::showFindBar);
-
     hookTransportSignals();
 
     // Auto-start session logging for a saved connection that asks for it
@@ -359,6 +355,12 @@ void TerminalView::positionToast()
 void TerminalView::pasteFromClipboard()
 {
     m_display->pasteClipboard();
+}
+
+void TerminalView::sendBytes(const QByteArray &bytes)
+{
+    if (!bytes.isEmpty() && m_transport->state() == Transport::State::Connected)
+        m_transport->write(bytes);
 }
 
 void TerminalView::clearScreen()
@@ -952,7 +954,7 @@ void TerminalView::closeFindBar()
         window->scrollToEnd();
     }
 
-    m_display->setFocus();
+    setFocus(); // the focus proxy: the terminal display, or the hex view
 }
 
 void TerminalView::performSearch(bool forwards)
@@ -960,15 +962,21 @@ void TerminalView::performSearch(bool forwards)
     if (!m_findBar || m_findEdit->text().isEmpty())
         return;
 
-    Konsole::ScreenWindow *window = m_display->screenWindow();
-    if (!window)
-        return;
-
     const QRegularExpression regex(m_findEdit->text(), QRegularExpression::CaseInsensitiveOption);
     if (!regex.isValid()) {
         m_findStatusLabel->setText(QStringLiteral("Invalid pattern"));
         return;
     }
+
+    // A hex pane has no VT100 buffer - it searches the dump's own text.
+    if (m_hexMode) {
+        m_findStatusLabel->setText(m_hexView->find(regex, forwards) ? QString() : QStringLiteral("No matches"));
+        return;
+    }
+
+    Konsole::ScreenWindow *window = m_display->screenWindow();
+    if (!window)
+        return;
 
     const int startColumn = m_hasMatch ? (forwards ? m_matchEndColumn : m_matchStartColumn) : 0;
     const int startLine = m_hasMatch ? (forwards ? m_matchEndLine : m_matchStartLine) : (forwards ? 0 : window->lineCount() - 1);

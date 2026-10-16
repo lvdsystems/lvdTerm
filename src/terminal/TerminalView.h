@@ -93,13 +93,16 @@ public:
     // geometry.
     void ensureCorrectSize(const QSize &size);
 
-    void showFindBar(); // Ctrl+F, also bound directly on this widget
+    void showFindBar(); // MainWindow's "Find in Scrollback" shortcut (configurable, default Ctrl+Shift+F)
 
     // Used by MainWindow's "Terminal" menu (enabled only while a terminal
     // pane has focus - see MainWindow::createMenus()) and by the
     // right-click menu (see MainWindow::showPaneContextMenu()).
     void copySelection();
     void pasteFromClipboard();
+    // Types raw bytes into the session (custom "send text" shortcuts); dropped
+    // while not connected.
+    void sendBytes(const QByteArray &bytes);
     void clearScreen(); // Emulation::clearEntireScreen() - visible screen only, pushed into history
     void clearBuffer(); // Emulation::clearScreenAndHistory() - screen + all scrollback + homes the cursor
 

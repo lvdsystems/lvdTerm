@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+- Settings > Keyboard Shortcuts: a dedicated page listing every shortcut, with
+  change / clear / reset per command, and custom shortcuts that type a piece of
+  text into the active terminal. Changes apply immediately and persist.
+- Copy / Paste on Ctrl+Shift+C / Ctrl+Shift+V (plain Ctrl+C still reaches the
+  running program).
+- Find in scrollback on Ctrl+Shift+F, now also searching hex-viewer panes.
+- Drag a pane by its title strip to move it (split on an edge, swap in the
+  middle); "Respawn Terminal" and "Change Settings..." in the pane menu.
+
+### Bugfix
+- Ctrl+F did nothing in a terminal pane: it was bound twice, which Qt treats as
+  ambiguous and fires neither. There is now one binding per command.
+
 ## 0.3.2
 
 ### New Features
