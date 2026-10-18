@@ -43,6 +43,8 @@ const QList<ShortcutCommand> &table()
         {QStringLiteral("connection.newSerial"), QStringLiteral("Connection"), QStringLiteral("New Serial Connection..."), {}, Scope::MainWindow},
         {QStringLiteral("connection.newTelnet"), QStringLiteral("Connection"), QStringLiteral("New Telnet Connection..."), {}, Scope::MainWindow},
         {QStringLiteral("connection.newSsh"), QStringLiteral("Connection"), QStringLiteral("New SSH Connection..."), {}, Scope::MainWindow},
+        {QStringLiteral("connection.newVnc"), QStringLiteral("Connection"), QStringLiteral("New VNC Connection..."), {}, Scope::MainWindow},
+        {QStringLiteral("connection.newRdp"), QStringLiteral("Connection"), QStringLiteral("New RDP Connection..."), {}, Scope::MainWindow},
         {QStringLiteral("connection.newLoopback"), QStringLiteral("Connection"), QStringLiteral("New Loopback (test)"), {}, Scope::MainWindow},
         {QStringLiteral("connection.closeTab"), QStringLiteral("Connection"), QStringLiteral("Close Pane / Tab"), seq("Ctrl+W"), Scope::MainWindow},
 

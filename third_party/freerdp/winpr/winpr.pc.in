@@ -1,0 +1,15 @@
+prefix=@PKG_CONFIG_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@WINPR_INCLUDE_DIR@
+libs=-lwinpr@WINPR_API_VERSION@
+
+Name: WinPR
+Description: WinPR: Windows Portable Runtime
+URL: https://freerdp.com/
+Version: @WINPR_VERSION@
+Requires:
+Requires.private: @WINPR_PC_REQUIRES_PRIVATE@
+Libs: -L${libdir} ${libs}
+Libs.private: @WINPR_PC_LIBRARY_PRIVATE@
+Cflags: -I${includedir}

@@ -1,0 +1,31 @@
+#pragma once
+
+#include "core/Transport.h"
+#include "RdpConnectionSettings.h"
+
+class RdpClient;
+
+// Gives an RDP session the same lifecycle every other pane has (state,
+// connect/disconnect, errors - so auto-reconnect, the status strip and tab
+// icon all work unchanged). Like VncTransport there is no byte stream: the
+// pixels go from client() straight to the pane's RdpWidget.
+class RdpTransport : public Transport
+{
+    Q_OBJECT
+
+public:
+    explicit RdpTransport(RdpConnectionSettings settings, QObject *parent = nullptr);
+
+    void connectToHost() override;
+    void disconnectFromHost() override;
+    void resize(int, int) override {}
+
+    RdpClient *client() const { return m_client; }
+
+public slots:
+    void write(const QByteArray &) override {}
+
+private:
+    RdpConnectionSettings m_settings;
+    RdpClient *m_client = nullptr;
+};

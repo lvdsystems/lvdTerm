@@ -15,6 +15,8 @@
 
 #include "SerialSettingsWidget.h"
 #include "SshSettingsWidget.h"
+#include "RdpSettingsWidget.h"
+#include "VncSettingsWidget.h"
 #include "terminal/KeyboardProfiles.h"
 
 namespace
@@ -38,6 +40,8 @@ constexpr int kSerialIndex = 0;
 constexpr int kTelnetIndex = 1;
 constexpr int kSshIndex = 2;
 constexpr int kLocalIndex = 3;
+constexpr int kVncIndex = 4;
+constexpr int kRdpIndex = 5;
 } // namespace
 
 ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defaultFolder, const QStringList &existingFolders)
@@ -60,6 +64,8 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     , m_telnetRawModeCheck(new QCheckBox(QStringLiteral("Raw (no Telnet protocol negotiation)"), this))
     , m_sshWidget(new SshSettingsWidget(this))
     , m_localShellEdit(new QLineEdit(this))
+    , m_vncWidget(new VncSettingsWidget(this))
+    , m_rdpWidget(new RdpSettingsWidget(this))
 {
     setWindowTitle(QStringLiteral("New Connection"));
 
@@ -76,6 +82,8 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     m_typeCombo->addItem(QStringLiteral("Telnet"));
     m_typeCombo->addItem(QStringLiteral("SSH"));
     m_typeCombo->addItem(QStringLiteral("Local Shell"));
+    m_typeCombo->addItem(QStringLiteral("VNC"));
+    m_typeCombo->addItem(QStringLiteral("RDP"));
     m_typeCombo->setCurrentIndex(kSshIndex); // most new connections are SSH; setProfile() overrides this when editing an existing one
     connect(m_typeCombo, &QComboBox::currentIndexChanged, this, &ConnectionEditDialog::updateTypeStack);
 
@@ -127,6 +135,8 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     m_typeStack->insertWidget(kTelnetIndex, telnetPage);
     m_typeStack->insertWidget(kSshIndex, m_sshWidget);
     m_typeStack->insertWidget(kLocalIndex, localPage);
+    m_typeStack->insertWidget(kVncIndex, m_vncWidget);
+    m_typeStack->insertWidget(kRdpIndex, m_rdpWidget);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -197,6 +207,10 @@ ConnectionProfile::Type ConnectionEditDialog::indexToType(int index) const
         return ConnectionProfile::Type::Ssh;
     case kLocalIndex:
         return ConnectionProfile::Type::Local;
+    case kVncIndex:
+        return ConnectionProfile::Type::Vnc;
+    case kRdpIndex:
+        return ConnectionProfile::Type::Rdp;
     default:
         return ConnectionProfile::Type::Serial;
     }
@@ -211,6 +225,10 @@ int ConnectionEditDialog::typeToIndex(ConnectionProfile::Type type) const
         return kSshIndex;
     case ConnectionProfile::Type::Local:
         return kLocalIndex;
+    case ConnectionProfile::Type::Vnc:
+        return kVncIndex;
+    case ConnectionProfile::Type::Rdp:
+        return kRdpIndex;
     case ConnectionProfile::Type::Serial:
         return kSerialIndex;
     }
@@ -248,6 +266,12 @@ void ConnectionEditDialog::setProfile(const ConnectionProfile &profile)
         break;
     case ConnectionProfile::Type::Local:
         m_localShellEdit->setText(profile.localShell);
+        break;
+    case ConnectionProfile::Type::Vnc:
+        m_vncWidget->setSettings(profile.vnc);
+        break;
+    case ConnectionProfile::Type::Rdp:
+        m_rdpWidget->setSettings(profile.rdp);
         break;
     }
 }
@@ -287,6 +311,12 @@ ConnectionProfile ConnectionEditDialog::profile() const
         break;
     case ConnectionProfile::Type::Local:
         p.localShell = m_localShellEdit->text().trimmed();
+        break;
+    case ConnectionProfile::Type::Vnc:
+        p.vnc = m_vncWidget->settings();
+        break;
+    case ConnectionProfile::Type::Rdp:
+        p.rdp = m_rdpWidget->settings();
         break;
     }
 

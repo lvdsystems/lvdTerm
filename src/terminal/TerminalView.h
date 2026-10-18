@@ -16,6 +16,8 @@ using Konsole::TerminalDisplay; // TerminalDisplay lives in namespace Konsole
 class Transport;
 class TerminalSession;
 class HexDumpWidget;
+class VncWidget;
+class RdpWidget;
 class QLabel;
 class QVBoxLayout;
 class QLineEdit;
@@ -118,6 +120,8 @@ public:
     const std::optional<SshConnectionSettings> &sshSettings() const { return m_sshSettings; }
     const std::optional<ConnectionProfile> &sessionSnapshot() const { return m_sessionSnapshot; }
     bool isHexMode() const { return m_hexMode; }
+    bool isVncMode() const { return m_vncMode; }
+    bool isRdpMode() const { return m_rdpMode; }
 
     // The pane the user is working in gets an accent-coloured border,
     // the others a neutral one - set by MainWindow::updatePaneFrames().
@@ -214,6 +218,18 @@ private:
     // layout in this mode.
     const bool m_hexMode = false;
     HexDumpWidget *m_hexView = nullptr;
+
+    // ConnectionProfile::Type::Vnc: same idea as hex mode, the pane shows a
+    // remote desktop (VncWidget, fed by VncTransport's client) instead of a
+    // terminal. Everything around it - status strip, border, drag and drop,
+    // auto-reconnect and its overlay - is shared with the terminal panes.
+    // Copy/Paste/Find/Clear and logging have nothing to act on here.
+    const bool m_vncMode = false;
+    VncWidget *m_vncView = nullptr;
+
+    // ConnectionProfile::Type::Rdp: likewise, with RdpWidget fed by RdpTransport.
+    const bool m_rdpMode = false;
+    RdpWidget *m_rdpView = nullptr;
 
     bool m_autoReconnect = true;
     int m_attempt = 0;

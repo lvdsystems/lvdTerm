@@ -1,0 +1,2817 @@
+# 2026-10-12 Version 3.32.2
+
+Regression, bugfix and security release.
+We've been under close scrutiny by various security researchers.
+Addressing their findings we've hardened the code base considerably against
+malicious client and/or server messages
+
+## CVE
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-4g67-jhpc-q5xp
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-799q-hjgw-g55g
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-cg4f-57hc-v7w7
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-rrp5-666j-g6gp
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-wg7g-gx9g-r96c
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f53w-3364-jr35
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-66mr-7wc7-23vc
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-hqf8-95c7-6r92
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-8g9g-hqqp-fw69
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jq25-3374-4262
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-7qw2-8h66-pvpw
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-5j39-x36c-x9pm
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-6p3w-fv52-cf24
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-4qq4-qwxq-49m8
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-x7w3-32ch-x2jq
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-v3q2-qjvf-7rqw
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-4vh4-3pc3-32p7
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-x4x6-2hrm-hvq9
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-8rjm-m7xg-mg6m
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-xc85-4mqc-xgcx
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-v85m-wg84-5ffh
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-6wqx-rv3q-vcxp
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-fg78-v8j5-8697
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-983v-jp34-f3fm
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-2557-79qc-6gfr
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-xjhw-2r55-m95g
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-m59q-wm7v-mp57
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-x26g-fp9v-c2pg
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-c426-ppvf-jpfg
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-5qqp-5ffm-m3p9
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-fqcj-rwww-2498
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-r387-jjq3-87hv
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-2c9x-4gr7-hrwx
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-x8vp-ff7m-294g
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-3pg4-5r42-wxvj
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qw7w-hhxq-763c
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-w897-ffhv-5j7g
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-3hf9-w6hr-hf9j
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-j536-qc58-pmf8
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-fqw6-jf2h-6fj6
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-cx9c-q4jc-wm6c
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-wffv-rjv2-h2x2
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jqf4-4p68-4p43
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-q82v-5wjg-6h57
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-m7xq-5f7v-hjvw
+
+## What's Changed
+* [channels,urbdrc] fix missing input range check (#13541)
+* [channel,urbdrc] revert device reset and cancel (#13618)
+* [channels,urbdrc] redirect USB devices plugged in during the session (configurable hotplug class filter, detach late-bound kernel drivers) (#13606)
+* [channels,rdpei] track the client ready state (#13537)
+* [channels,rdpsnd,mac] connect player with the stream format (#13574)
+* [channels,rdpdr] fix drive redirection with FreeRDP-based servers (#13592)
+* [channels,smartcard] fix transaction deadlocks and lockups with pcsc-lite (#13518)
+* [core,proxy] fix inverted validity check (#13547)
+* [core,mcs] clarify disconnect ultimatum send logging (#13636)
+* [core,capabilities] sanitize KeyboardType from TS_INPUT_CAPABILITYSET (#13562)
+* Bugs fixed (#13548)
+* Bugs fixed (#13552)
+* sspi/kerberos/gfx/usb fixes (#13553)
+* [codec,planar] match allocator for free (#13555)
+* [codec,dsp] add MediaCodec AAC audio backend (#13597)
+* [codec,dsp] check input size is valid for gsm_decode (#13641)
+* [codec,h264] only reinitialize on hardware acceleration change (#13596)
+* [codec,h264] improve MediaCodec decoder and add H.264 encoder (#13598)
+* Rfx fix reachable assertions (#13600)
+* Yuv fixes (#13631)
+* [gateway,http] fix BodyContent use-after-free (#13568)
+* Gateway checks (#13604)
+* [client,common] fix reading the user AAD helper config (#13566)
+* [client,common] Populate smart sizing from settings into rdpFile (#13602)
+* [client,common] copy buffer for alignment. (#13607)
+* [client,ios] Improve UI for modern devices. (#13581)
+* [client,sdl] announce the clipboard contents present at connect (#13603)
+* [client,sdl] rail: do not report deactivation from focus events (#13624)
+* [client,x11] fix raw clipboard transfer (#13599)
+* Appdetails (#13573)
+* Rdg fixes (#13572)
+* Drdynvc increment (#13611)
+* code cleanup/hardening (#13584)
+* Clip text plain (#13569)
+* [ci,workflow] switch to current clang-tidy review (#13585)
+* [utils,smartcard] add cReaders range checks (#13615)
+* Winpr tools linking (#13544)
+* [winpr,sspi] use an enterprise principal (RFC 6806) for UPN suffix domains (#13588)
+* [winpr,utils] log SAM file name (#13570)
+* [winpr,clipboard] make test failure verbose (#13605)
+* [winpr,crt] check all paths for overflow (#13609)
+* [winpr,ncrypt] fix geometry checks to work with multiple keys on one … (#13613)
+* [winpr,crt] fix endless loop in winpr_utfEscapedStringToUtf8 (#13616)
+* [winpr,crt] make test failures verbose (#13619)
+* [winpr,clipboard] improve unit tests (#13621)
+* [winpr,file] fix GetStdHandle returning the same handle for all streams (#13565)
+* [winpr,crt] fix winpr_utfEscapedStringToUtf8 on big-endian (#13642)
+* [cmake] link dav1d, aom and yuv when found without pkg-config (#13625)
+* Hardening what else (#13612)
+* channel lock during reply (#13627)
+* More proxy fixes (#13630)
+* Fix bugs (#13637)
+* [server,ntlm] fix missing UNICODE flag that causes authentication to fail (#13638)
+* Warn fixes mstsc (#13643, #13644)
+* [client] fix clipboard mime type (#13645)
+* [channels,drdynvc] release channelsById lock when channel creation fails (#13646)
+* [winpr,crt] fix big-endian wchar compare (#13649)
+* [server,proxy] ensure PEM is \0 terminated (#13650)
+* [crypto,x509] accept wildcard DNS names in certificates (#13653)
+* [utils,scard] lazy allocate return buffer (#13659)
+* OSS-Fuzz: Improve core client fuzzer, fix bugs detected (#13655, #13660, #13662, #13678)
+* [client,sdl] fix Wayland clipboard: stale data, stale updates, threading (#13560)
+* Fix a bug in HashTable_Foreach (#13661)
+* lint warning fix (#13663)
+* [channels,drdynvc] refuse unknown channels before registering them (#13665)
+* [client,sdl] include cstdlib for std::free (#13666)
+* [primitives,sse] fix AVC444v1 chroma placement in sse41_ChromaV1ToYUV444 (#13670)
+* [scripts,mingw] update LibreSSL to 4.3.3 (#13667)
+* [channels,urbdrc] complete pending transfers when freeing a device (#13679)
+* [channels,urbdrc] fix deadlock between USB hotplug and dynamic channel close (#13674)
+* [core,connection] reset codecs on deactivate-reactivate resize (#13668)
+* Winpr image fuzz (#13680)
+* X11 rail (#13681)
+* [client,sdl] renegotiate the desktop size in fullscreen (#13682)
+
+## New Contributors
+* @kalt2212 made their first contribution in #13568
+* @webskin made their first contribution in #13562
+* @sundbp made their first contribution in #13566
+* @congzhangzh made their first contribution in #13574
+* @SoapGentoo made their first contribution in #13588
+* @Ceschi-ops made their first contribution in #13606
+* @brianIcke made their first contribution in #13613
+* @Ewerton made their first contribution in #13616
+* @jhmk9150-lab made their first contribution in #13624
+* @divinehawk made their first contribution in #13518
+* @cedricroijakkers made their first contribution in #13646
+* @vichong made their first contribution in #13653
+* @nickallevato made their first contribution in #13560
+* @pletch made their first contribution in #13670
+* @ispy4you made their first contribution in #13682
+
+For a complete and detailed change log since the last release run:
+git log 3.32.2...3.32.1
+
+
+# 2026-09-28 Version 3.32.1
+
+Regression and bugfix release. After the latest hardening a few corner cases
+were not covered by regression tests and needed adjustment. Most notably
+fragmented static channel PDU were rejected breaking copy & paste for larger data.
+
+* AAudio backend for android
+* iOS client updates
+
+## CVE
+
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-9qqc-m43j-g4r2
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-3m9q-g533-rqjq
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-262p-h989-vmpv
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-5xjc-c64q-m8r6
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f3vg-h45x-6wgf
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-c49c-xm94-5qf3
+
+## What's Changed
+* unit test return check and parameter check fixes (#13479)
+* [channels,rdpecam] compare start request against announced media types (#13481)
+* [warnings] fix return value checks (#13485)
+* [core,gateway] fix http timeout checks (#13484)
+* [channels,totalLength] correct and tighthen length checks (#13487)
+* [codec] fall back when hardware decoder size is unsupported (#13394)
+* [codec,h264] fix ffmpeg hardware acceleration (#13489)
+* [winpr,tools] fix makecert -n parsing (#13492)
+* [channels,android] add AAudio backends for rdpsnd and audin (#13483)
+* [client,common] install aad helpers in libexec (#13490)
+* [channels,cliprdr] notify client about empty formats from server (#13496)
+* X11 reconnect dialog (#13497)
+* [channels,rdpecam] release idle capture devices after a timeout (#13498)
+* Gfx checks (#13502, #13511)
+* Proxy refine (#13508)
+* [ci,deb] add libexec to packaged files (#13510)
+* [codec,h264] fix avc444 no-picture handling and decode validation (#13499)
+* [client,sdl] fix multimon layout on wlroots compositors (#13507)
+* [winpr,clipboard] include null terminator in CF_TEXT size (#13503)
+* [client, ios] replace deprecated api to modern api, fix some bugs (#13515, #13512)
+* [codec,h264] fix Media Foundation stream change handling and chroma plane offsets
+  (#13520, #13522)
+* [channels,urbdrc] fix status mapping and descriptor write (#13523)
+* [utils,cliprdr] fix regression in contains_dotdot (#13527)
+* [winpr,crt] fix ConvertLineEndingToCRLF for leading and trailing line breaks (#13530)
+* [codec,dsp] fix opus encode output length (#13531)
+* [winpr,cmake] replace check_symbol_exists (#13529)
+* Winpr utils image (#13532)
+* [winpr,utils] check the bitmap size in 64 bit (#13535)
+* [channels,rdpsnd] close the channel when stopping without an own thread (#13536)
+* [channels,rdpei] don't close the channel twice after a failed init (#13534)
+* Fix software/emulated smartcard logon (WITH_SMARTCARD_EMULATE) on Windows (#13528)
+* Final cleanups (#13538)
+
+## New Contributors
+* @xerrni made their first contribution in (#13498)
+* @derekroper made their first contribution in (#13507)
+* @DCaioP made their first contribution in (#13503)
+* @4RH1T3CT0R7 made their first contribution in (#13520)
+* @djuarez500 made their first contribution in (#13528)
+
+For a complete and detailed change log since the last release run:
+git log 3.32.1...3.32.0
+
+# 2026-09-23 Version 3.32.0
+
+New release with many user visible goodies for all of you.
+There have also been *lots* of issues addressed to harden against protocol violations/exploits,
+thanks to all the people doing in depth code reviews and security reports.
+
+* [proxy] add configuration options for /sec:ext or PROTOCOL_HYBRID_EX
+* [proxy] add configuration options for target certificate policy.
+  NOTE: This changes default behavior from accept unless denied to deny unless accepted!
+        Requires an update of your proxy configuration file if you rely on this.
+* [SDL,xfreerdp] seamless Entra/Azure integration on linux (with helper binaries)
+* [beta] Basic SDL client RAILS support for X11/wayland (other platforms currently
+  lack some features / platform integration code, as we still need some native hooks)
+* [RDPECAM] stops camera streams now when the remote no longer requests frames.
+  (no more camera LED after closing the windows application accessing it)
+* [RDPEWA] support user verification in addition to / instead of pin
+* [RDPEUSB] properly map interface index to interface numbers
+  (more devices should work now)
+* [android] updated touch pointer
+* [wlfreerdp] shortcut inhibit release on mouse leave window
+* [xfreerdp] rails improvements, hopefully no longer shrinking windows
+* Full support for [MS-RDPBCGR] 2.2.10.2 Early User Authorization Result PDU,
+  so now you get a error message if a user is not allowed to log in instead of
+  a network failed message. (Authentication /sec:ext or PROTOCOL_HYBRID_EX)
+* [shadow] add configuration options for /sec:ext or PROTOCOL_HYBRID_EX
+* [gateway] split HTTP timeout from TCP connect timeout
+* [ffmpeg] support generic hardware accelerated encoding/decoding, replacing the
+  old VAAPI only implementation. (still experimental as there are often driver issues)
+
+## CVE
+
+Note: Advisories will be published days/weeks after the release, so links are 404
+      until then.
+
+* by Opensec Intelligence
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-xq87-9rrm-6wqw
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-3rvr-qvx8-rj23
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pvgq-84w2-93ph
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-xm53-352c-57jw
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-3mq5-xh88-9v62
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-mqxv-c882-m8w9
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-q6pp-28g8-xqjc
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jgw9-wqvx-j495
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-5cgr-vmp8-fmvj
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-m7g5-gw57-cwcr
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pjxv-5j98-cqx4
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pw4j-ff39-9vjm
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-87v8-2gwr-ww9j
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-h7fx-22wv-4cg8
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-996j-34w6-5hgm
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-52xc-5973-w5vv
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qjwp-c855-hc69
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-4ww8-3vqm-jgcf
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-96rv-gf42-7wq9
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-9qr4-rgq4-jfp8
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-cq4m-gwc5-w8rc
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-q9p9-j22r-577p
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-2jfv-j3wx-5cg4
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-g8jw-gv54-r94p
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-7vfc-chg9-q5r8
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f46f-pxh9-w2rh
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pg3f-chj4-mrw6
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f526-rq4j-5ch8
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-8rpr-jjjg-5qv6
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-cmgx-558f-vh67
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-m998-cvfm-9444
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-99p4-8j24-wvj4
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-97pf-pwp3-2wrv
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-27m7-gwhh-6hhf
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qpfh-m9w6-xf2x
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-q56j-jjh6-38jf
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f554-v4xw-5j39
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-chh2-527f-x255
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-xf45-j844-588v
+* by @DavidKorczynski
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qq23-mqmv-pc65
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jhxw-3hj9-9hqh
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-h44v-39x6-9xvg
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-6vjv-4hm3-6698
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-c3rh-2hv6-7hf2
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jp2r-gm4v-wvq2
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-gvq8-v2fm-ffxv
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jhv5-m83m-hxhq
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-grvc-qhhp-7h6m
+* by @programmervuln
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-26cc-wjh8-hjw6
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-945c-qq5h-jqwp
+* by @HAN-BAMBO
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-93g7-296p-j77j
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-6rj3-rf6g-3vw5
+* by @kimaiden1984-boop
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/HSA-wf3x-658c-52m5
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/HSA-2hhg-8xx6-v73w
+* by @jimaf
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-g4wg-67xq-8q53
+* by @thawkahant
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-72qv-gcph-rfwf
+* by @smaeljaish771
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-vqxm-9w7c-hvvx
+* by @D7EAD
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-hxw3-57rq-3v4m
+* by @manus-use
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f4pf-pgp4-f2r3
+* by @router0mail
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-4mpr-hmqx-83q8
+* by mail
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-x7v7-9jp5-wqj2
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-83g2-gf92-5c4g
+
+## What's Changed
+* Various WinPR addings (#13311)
+* [cache] improve cache_resize (#13317)
+* OSS-Fuzz: Add fuzzer for Smartcard Operations (#13323)
+* [codec,fdk] ignore decoder errors (#13324)
+* [codec,h264] overallocate decoder buffers (#13326)
+* [warnings,s(n)printf] fix missing return value checks (#13325)
+* [client,common] fix TestClientRdpFile (#13333)
+* [winpr,library] fix mac os GetModuleFileNameA (#13337)
+* [channels,pulse] survive hot-removal of the active audio device (#13334)
+* [client,common] map gatewaycredentialssource from rdp files (#13330)
+* Warn fix pointer (#13341)
+* Relax order checks (#13343)
+* OSS-Fuzz: Add new fuzzer targets Client Rdp File processing (#13344)
+* [channels,urbdrc] report the negotiated device speed (#13345)
+* [client,x11] fix clipboard atom evaluation (#13347)
+* [client,x11] use correct count to iterate atoms (#13349)
+* licensing checks & gfx surface format hacks (#13351)
+* [channels,urbdrc] give the device speed a type (#13352)
+* [core,gateway] bound ARM gateway responses by their own timeout, not TcpConnectTimeout (#13327)
+* [codec,h264] configure ffmpeg via env variables (#13316)
+* [winpr,image] honor bfOffBits when parsing bitmaps (#13350)
+* [cache,pointer] explicitly cast to void* (#13353)
+* Ci warning fixes (#13354)
+* [client,cmdline] honor explicitly disabled multimon and smart-sizing (#13331)
+* [client,common] eliminate dead code (#13357)
+* [alignment] add WINPR_PACKED_ALIGN_CAST (#13355)
+* Silence cast function type (#13358)
+* [winpr,info] add warning log for winpr debug options (#13359)
+* [winpr,align] more warnings on unsupported configurations (#13360)
+* [winpr,ncrypt] add idLen checks (#13361)
+* Msvc unaligned (#13362)
+* Fuzzer fixes (#13363)
+* Channels nodiscard (#13366)
+* l10n: add Swedish Android localization (#13365)
+* various cleanups and fixes (#13368)
+* [client,sdl] handle Windows E0 36 as right shift (#13369)
+* [client, ios] iOS client build fix (#13083)
+* Cleanups september (#13370)
+* [winpr,library] implement GetModuleFileNameA on OpenBSD with getexecpath() (#13335)
+* [cmake] fix building on OpenBSD (#13380)
+* [winpr,cast] fix parentheses (#13379)
+* [winpr,library] move FreeBSD GetModuleFileNameA into function (#13382)
+* [winpr,cast] add PPC and s390x to supported (#13383)
+* Pulse detect (#13384)
+* [codec,dsp] fix compiler warnings (#13385)
+* [client,common] fix POSIX command-line status options (#13372)
+* [codec,dsp] fix variable init for soxr (#13386)
+* [codec,h264] fix broken MediaFoundation decoder build (#13389)
+* [ci,windows] enable WITH_MEDIA_FOUNDATION (#13390)
+* Scard checks (#13395)
+* [client,x11] preserve requested size for ordinary windows (#13373)
+* [client,x11] honor decorations for RemoteApp windows (#13393)
+* [client,x11] release pointer grab when RemoteApp loses focus (#13392)
+* Ndr length checks (#13399)
+* [channels,rdpear] fix missing NULL check (#13400)
+* [client,android] horizontal scroll and middle click (#13401)
+* [client,android] add touchpad two-finger scroll (#13402)
+* [core,transport] abort write hard if it fails (#13404)
+* [core,rdstls] Fix version validation macro (#13406)
+* fix GDI handle leaks in wf_gdi_mem3blet (#13403)
+* Geometry checks (#13407)
+* [core,sdl] externalize the AAD credentials in an external process (#13340)
+* Winpr wcschr (#13408)
+* Tighten checks (#13410)
+* [channel,urbdrc] fix func_claim_all_interface, mark [[nodiscard]] (#13411)
+* [utils,http] enable host verification (#13412)
+* Unaligned eliminate (some) (#13405)
+* [packaging,all] enable WITH_XDG_AAD_AUTH_HELPER (#13413)
+* [core,rdstls] accept matching autoreconnect cookies (#13414)
+* [core,gateway] do not require a final auth token (#13418)
+* [rdpecam,v4l] release capture when sample requests drain (#13417)
+* Stream utf16 and persistent cache fixes (#13421)
+* Fix usage of interface index as an interface number (#13419)
+* [core,security] add ExtSecurity to all clients and server (#13415)
+* [uwac,client] fix invisible Wayland cursor and stuck shortcut inhibitor (#13424)
+* [channels,audin] fix mac/ios input validation (#13423)
+* [client,x11] fix RemoteApp drop-down menus and dialog window size feedback loop (#13422)
+* [client,sdl] RemoteApp (RAIL) support for the SDL3 client (#13133)
+* [client,sdl] generate xdg glue code without warnings (#13425)
+* [ci,packaging] fix deb control dependencies (#13426)
+* Proxy drdynvc (#13434)
+* [client,sdl] add new events from SDL 3.3.2 and newer (#13435)
+* set_termianl_nonblock -> set_terminal_nonblock (#13428)
+* Oauth2 state tracking (#13433)
+* [winpr,utils] SAM parser: zero memory before free (#13436)
+* Client common context checks (#13438)
+* no Password: prompt and don't mess with tty if stdin is a pipe (#13437)
+* [client,common] fix inverted assert (#13439)
+* [channels,rdpdr] add a workaround for windows server 2003 and XP (#13445)
+* [client,common] implement common client AAD helper (#13441)
+* Kbd mapping config (#13444)
+* [client,common] unify aad token navigation code (#13446)
+* [client,common] fix arguments order (#13447)
+* Tsg and cleanups (#13448)
+* Harden (#13451)
+* sysinfo.c: fix macOS cpu macros (#13452)
+* reject unterminated applicationId in rail get appid resp (#13453)
+* Harden more (#13456)
+* SDL3: fix typo (#13462)
+* [core,server] sanitize KeyboardType received from clients (#13461)
+* [memory] prefer winpr_aligned_calloc (#13466)
+* [server,proxy] add TargetCertPolicy config option (#13463)
+* OSS-Fuzz: Disable libpulse manually for oss-fuzz build (#13465)
+* Harden again (#13464)
+* [client,x11] fix RAIL window repaint volume (invalid region never reset, updates for unmapped windows) (#13459)
+* Warn cleanup (#13467)
+* Warn cleanup (#13467)
+* Refinements (#13468)
+* Refinements some more (#13469)
+* [codec,dsp] fix fdk-aac encoding (#13470)
+* Cleanups (#13471)
+* [core,gateway] never pass NULL to websocket_reply_close (#13474)
+* [core,fastpath] add fastpath errors to relax-order-checks (#13476)
+
+## New Contributors
+* @shakeelosmani made their first contribution in (#13334)
+* @sjtrotter made their first contribution in (#13330)
+* @huanzhang12 made their first contribution in (#13350)
+* @yeager made their first contribution in (#13365)
+* @Ohyunj made their first contribution in (#13403)
+* @yerbolgmailcom made their first contribution in (#13417)
+* @slavaandrejev made their first contribution in (#13419)
+* @berkeleyinc made their first contribution in (#13424)
+* @unicon221 made their first contribution in (#13422)
+* @barracuda156 made their first contribution in (#13452)
+* @gaardiolor made their first contribution in (#13461)
+* @arthgirard made their first contribution in (#13459)
+
+For a complete and detailed change log since the last release run:
+git log 3.32.0...3.31.1
+
+# 2026-09-02 Version 3.31.1
+
+After the last huge CVE and security fix releases finally a simple papercut fix release.
+
+## Most notable user visible changes:
+* xfreerdp image clipboard now better handles conversion of host images to bitmap
+  (CF_DIB the default windows exchange format)
+* improved keyboard mapping for sdl-freerdp (some more exotic keys are properly mapped now)
+* xfreerdp RAILS: better transparency support with windows 11
+* Fix C23 macro definitions for GCC
+
+## What's Changed
+* create alpha capable GFX surfaces for XRGB_8888 (#13280)
+* Cleanups (#13282)
+* [client,sdl3] fix flickering on screens with DPI != 1.0 (#13278)
+* [debug,logs] fix warnings and errors WITH_DEBUG_ALL (#13283)
+* Fix the settings of FreeRDP_UnicodeInput bug (#13287)
+* only use AV_PIX_FMT_D3D12 in ffmpeg >=7 (#13286)
+* [winpr,handles] allow to Close a HANDLE listed in PROC_THREAD_ATTRIBUTE_HANDLE_LIST (#13284)
+* [cmake] proper Threads::Threads detection (#13288)
+* X11 image clip (#13289)
+* [client, mac] fix: build error undeclared 'nullptr' in Keyboard.m (#13290)
+* [codec,h264] overallocate YUV buffer (#13291)
+* build(test): only build JSON-dependent test when JSON is available (#13293)
+* [codec,h264] fix missing version guards (#13294)
+* [ci,qa] enable all debug options for static build (#13295)
+* feat: [client, mac, sdl3] support jp YEN/RO/EISUU/KANA keys (#13299)
+* [winpr,json] read JSON files in binary mode (#13298)
+* [client,sdl] map media pause scancodes (#13297)
+* [core,test] do not link winpr-tools when WITH_WINPR_TOOLS=OFF (#13303)
+* [channels,rdpear] return krb5 output buffer only after the call succeeds (#13307)
+* Media foundation fixes (#13308)
+* Winpr tools optional (#13309)
+* [c23] fix gcc compatibility issues (#13310)
+* [winpr,clipboard] honor DIB header size in BMP offsets (#13304)
+* [core,capabilities] apply HasQoeEvent from src, not settings (#13313)
+* [server,shadow] better logging for cert/key related problems (#13314)
+* [codec,h264] log vaapi driver vendor (#13315)
+* [server,shadow] better logging for cert/key related problems (#13314)
+* [codec,h264] log vaapi driver vendor (#13315)
+* Proxy compat (#13319)
+
+## New Contributors
+* @fundawang made their first contribution in (#13286)
+* @cawcaw2023 made their first contribution in (#13290)
+* @MeGaurav4 made their first contribution in (#13293)
+* @SebastienGllmt made their first contribution in (#13298)
+* @Lishkinfeld made their first contribution in (#13303)
+* @4sh0u0 made their first contribution in (#13313)
+
+For a complete and detailed change log since the last release run:
+git log 3.31.1...3.31.0
+
+# 2026-08-26 Version 3.31.0
+
+Huge bugfix and security release.
+
+We've received quite a number of smaller and bigger bugfixes and security reports
+that have been addressed with this release.
+Most important user facing change is a optimization of the YUV decoder which
+will result in faster client graphics for AVC/H264 sessions
+
+IMPORTANT: Distributors, please update ASAP, there are severe issues being
+           addressed with this release
+
+# CVE
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-c5gr-hmqp-pwj4
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-h5w2-q35j-443h
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-m85m-3qxv-63h5
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-r9pv-ffph-6gg6
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-ffjr-p229-hpch
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-4464-r7qj-pgrx
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-2vf2-grvj-6g8x
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-hg4r-vv53-vwf8
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-57h7-vw2f-2f9x
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-v649-94v2-p72q
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-j5mq-3349-gwmm
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-23pf-q83q-x45r
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pj8w-fh79-f438
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-vccg-35r5-8jrf
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-w9qg-g24r-77f6
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f5p6-88mh-59vg
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-hw7p-5h2r-83gq
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-r7jx-j9h7-j4xj
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-6mpx-c8rj-whj5
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-x7v6-xfx3-52j6
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-9jcm-x588-gh26
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-q65v-4w7q-hx3r
+
+## What's Changed
+* Warnings removed (#13076)
+* [codec,h264] support more hardware decoders (#13078)
+* [crypto] gracefully handle failed BIO/SSL creation error (#13080)
+* Ntlm custom (#13079)
+* Sspi tests (#13082)
+* [winpr,sspi] unify NTLM memory handling (#13085)
+* [codec,yuv] bound avc444v2 chroma combine to decoded frame width (#13084)
+* [client,common] use configured AAD authority for sso-mib (#13088)
+* [channels,rail] fix server side channel tracker (#13087)
+* Session info (#13089)
+* [winpr,ntlm] limit data copy to smaller entity (#13090)
+* [core,message] clone notify icon state order for async update (#13092)
+* [mf, mediacodec] fix h264 typo (#13101)
+* Fix for #13102 (#13108)
+* [client,android] send clipboard format list response (#13104)
+* [gdi] bound hatched brush pattern index in gdi_patblt (#13111)
+* [winpr,ntlm] require 16 byte signature buffer before access (#13119)
+* [client,sdl] stop drawing when update queue is empty, fixes high CPU (#13121)
+* cmake: add C++ filesystem detection module (#13124)
+* [winpr] add OpenBSD support for thread ID (#13154)
+* winpr: fix missing FreeLibrary/GetProcAddress declarations on Cygwin (#13138)
+* winpr: fix Cygwin GetModuleHandleW/TlsAlloc collisions under static linking (#13140)
+* collected bug fixes (#13160)
+* [core,server] parse drdynvc PDU through a substream (#13162)
+* [client,common] fix audio-mode documentation (#13161)
+* [client,android] replace deprecated KeyboardView (#13145)
+* [urbdrc] Fix TRANSFER_OUT completion framing (#13129)
+* [client,x11] abort if invalid monitor index was supplied. (#13163)
+* [codec,dsp] reset buffered samples on close (#13165)
+* Avc444 chroma (#13164)
+* [core,nla] report early user auth denial as ACCESS_DENIED (#13166)
+* [server,proxy] free peer while peer_list locked (#13159)
+* Hotplug (#13167)
+* uwac: don't try to use O_TMPFILE on OpenBSD (#13172)
+* [winpr,string] fix building on OpenBSD (#13171)
+* [channels,urbdrc] report the real IOCONTROL_COMPLETION output size (#13170)
+* [codec,openh264] handle nonzero result codes (#13177)
+* [codec,h264] fix offset region change detection (#13176)
+* [winpr,sspi] fix server-side SPNEGO mechanism fallback (#13169)
+* [cmake] build fixes for OpenBSD (#13173)
+* [winpr,sysinfo] use CLOCK_MONOTONIC as a fallback (#13178)
+* [channels,rdpdr] fix missing NULL check (#13180)
+* [libfreerdp,crypto] add compilation opt-in TLS AEAD data limit with RFC 8446 threshold (#13152)
+* [winpr,sysinfo] use sysctlbyname for OSX and iOS (#13179)
+* [settings] allow null arg in freerdp_addin_argv_new (#13117)
+* [client,common] url decode file paths (#13182)
+* [codec,yuv] make tile size compile time configurable (#13181)
+* [cache,pointer] cleanup and more logging (#13183)
+* [winpr,sspi] dispatch by package index instead of a mixed-width name (#13136)
+* Fix RAIL maximize normalization on Cinnamon (#13147)
+* [core,gateway] bound tsg authorize tunnel response to received length (#13186)
+* [channels,rdpdr] don't free() mntbuf in handle_platform_mounts_bsd() (#13187)
+* [winpr,sysinfo] use sysconf _SC_NPROCESSORS_ONLN on *BSD (#13174)
+* [core,nego] report why security negotiation failed (#13185)
+* uwac: only use O_TMPFILE if it exists (#13191)
+* [cmake] fix Sndio bits and not limit support to just OpenBSD (#13188)
+* [winpr,cmake] fixes for epollshim headers / function detection (#13190)
+* [channels,rdpsnd] fix sndio compile warnings (#13193)
+* [warnings] remove unused functions and variables (#13184)
+* [cache,glyph] clean up code, relax order checks (#13194)
+* uwac: disable the SHM_ANON support on DragonFlyBSD (#13195)
+* [libfreerdp] fix detection of FFmpeg (#13197)
+* Cache recreate on deacviate/reactivate, stream checks (#13196)
+* [channels,smartcard] prevent duplicate cleanup (#13198)
+* [channel,urbdrc] check func_get_ep_desc for validity (#13199)
+* [cache,pointer] reset pointer before cache free (#13200)
+* [cmake,epollshim] use PkgConfig::EPOLLSHIM target (#13203)
+* [client,sdl] fix scaled drawing (#13205)
+* [cmake] link explicitly PUBLIC/PRIVATE/INTERFACE (#13206)
+* [client,core] add gcc validity checks (#13207)
+* [crypto,x509] relax object_string checks (#13209)
+* More Checks... (#13212)
+* [codec,av1] use dav1d for AV1 decoding (#13211)
+* [scard,pack] fix NDR pointer validation for empty card handles (#13208)
+* Pkg config imported (#13213)
+* [utils,test] fix generated test data (#13214)
+* [channels,rail] fix NULL deref race on server channel start (#13216)
+* [channels,cliprdr] fix long format list parse (#13217)
+* [scard,pack] remove incorrect stream length checks in unpack functions (#13215)
+* [client,x11] clear errno before keyboard pipe read (#13220)
+* Fix use-after-free of the printer driver singleton (#13221)
+* [codec,yuv] fix pool_decode_rect loop variable reuse (#13223)
+* [channels,cliprdr] fix server-side format-list negotiation bugs (#13225)
+* fix use-after-free when winpr_aligned_recalloc fails (#13224)
+* [channel,urbdrc] add missing check (#13228)
+* [utils,rdpdr] force 64bit arithmetic in rdpdr_dump_packet (#13229)
+* Sdl image clipboard (#13230)
+* [codec,fdk] revert AACENC_GRANULE_LENGTH, (#13231)
+* [winpr,sspi] add custom extensions (#13222)
+* Sspi cleanup (#13233)
+* Canonicalize paths (#13175)
+* Timeout (#13234)
+* Rail workarea updates (#13238)
+* OSS-Fuzz: Disable SNDIO manually for oss-fuzz build (#13240)
+* Dos xattr (#13239)
+* Test fuzz server (#13241)
+* [winpr,cmake] guard CheckSourceCompiles (#13242)
+* [core] fix memory leak in TestFuzzServerSeedGen (#13245)
+* [core,connection] abort after PROTOCOL_FAILED_NEGO (#13250)
+* Safe zero (#13248)
+* [gdi] document cache requirement for gdi_init (#13249)
+* [core,server] lock dynamic channel list while parsing (#13251)
+* [cmake,yuv] fix detection without pkg-config (#13252)
+* [client,x11] fix /gdi:hw surface creation (#13255)
+* winpr/sspi/negotiate: NULL check sub credentials accepting context (#13254)
+* [utils,scard] validate ReaderState_Return on use (#13256)
+* Fuzzer improvements (#13257)
+* [winpr] implement inheritable handles in CreateProcess (#13246)
+* Warning fixes (#13258)
+* [doxygen] add missing @since version tags (#13259)
+* Cross fixes (#13260)
+* [winpr,path] fix mingw builds, link lowercase names (#13261)
+* Relax check in window_state_order_clone (#13263)
+* [core,test] ignore SIGPIPE in TestFuzzServerSeedGen (#13265)
+* Fix utf-8 encoding of LS and PS in winpr_str_has_newlines (#13262)
+* Cross mingw fixes (#13264)
+* [build,mingw] fix missing includes (#13268)
+* [build,mingw] replace C++11 constructs (#13269)
+* [client,x11] fix cliprdr infinite request loop (#13266)
+* [winpr] fix TestThreadCreateProcess (#13273)
+* Release cleanups (#13270, #13272, #13274, #13277)
+
+## New Contributors
+* @cordlandwehr made their first contribution in (#13080)
+* @berylraven made their first contribution in (#13088)
+* @tearfulDalvik made their first contribution in (#13101)
+* @cizra made their first contribution in (#13121)
+* @a5ehren made their first contribution in (#13124)
+* @brad0 made their first contribution in (#13154)
+* @robertschulze made their first contribution in (#13138)
+* @uchouT made their first contribution in (#13129)
+* @zx1991 made their first contribution in (#13177)
+* @mjpowersjr made their first contribution in (#13169)
+* @jclairembault made their first contribution in (#13152)
+* @hamed7ir made their first contribution in (#13136)
+* @Eneratos made their first contribution in (#13147)
+* @ElCruncharino made their first contribution in (#13211)
+* @maordadush made their first contribution in (#13216)
+* @gornkv made their first contribution in (#13220)
+* @eunho87 made their first contribution in (#13221)
+* @jasonmli8 made their first contribution in (#13263)
+
+For a complete and detailed change log since the last release run:
+git log 3.31.0...3.30.0
+
+# 2026-07-16 Version 3.30.0
+
+Security and bugfix release.
+Addresses a severe server side issue, update highly recommended.
+
+## CVE
+* Claude and Ada Logics
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-m37j-jcr2-8gcc
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-vv64-95pc-vj9v
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-rqgv-grx4-xm6x
+
+## What's Changed
+* Logon info update (#13060)
+* Websocket regression fix (#13064)
+* Sdl clipbaord and bounds checks (#13065)
+* [core,rdstls] improve version handling (#13066)
+* [channels,drdynvc] fix channel unref on create request send failure (#13067)
+* Audin checks (#13068)
+* [channels,rdpsnd] tighten bounds checks (#13070)
+* Pcap cleanup (#13071)
+
+For a complete and detailed change log since the last release run:
+git log 3.30.0...3.29.0
+
+# 2026-07-14 Version 3.29.0
+
+Security, bugfix and maintenance release.
+We've received a very rigorous review since our last release by a couple of
+security researchers, so this release contains quite a number of advisories.
+An update is highly recommended.
+
+## CVE and advisories
+* Bin Luo, University of Electronic Science and Technology of China (UESTC).
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-43hh-p3vw-hfx3
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-ph3q-f9w8-7jf3
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-mwwh-mhp9-q7vm
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-whq8-c3v3-p8v8
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-hgj8-g595-wfc6
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-8v6m-2cmc-chx9
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-5wr6-8m8j-3h7f
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-89c6-jjrw-96h4
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-8xqm-wp3f-rfp9
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-jm8r-22j6-4m4v
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-2c6r-4pr4-9x8m
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qmvw-52ph-q5pv
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-34hq-hwjw-q8v3
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-33gg-h66j-3697
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-vxp3-7g6q-rq2w
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-v89x-pc32-hqr7
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pfxq-3qmw-8vjx
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-78jj-45vh-jpm5
+* @canomer
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-69xf-pqrw-596x
+* Reported by Team Atlanta
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-8jj2-67pg-j6mg
+* @HEXER365
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qrxx-7g3c-j6w3
+* cbcs — found by Tencent Yunding Security Lab using agents
+  * https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-cj9v-h4hq-29jr
+
+## What's Changed
+* [client,sdl] Handle requested clipboard MIME formats (#13007)
+* [client,x11] Fix RAIL HiDef window maximize (#13010)
+* [channels,rdpecam] filter devices without supported formats (#13015)
+* [codec,planar] fix input checks (#13016)
+* [client] do not build wayland and windows (#13017)
+* [client,windows] add server response size check (#13018)
+* fix processImageName length check in rail get appid resp ex (#13020)
+* [channels,rdpecam] add data validity checks (#13021)
+* Scard alloc update reorder (#13022)
+* H264 decoder surface dimension mismatch (#13024)
+* [core,security] reject short server random in security_establish_keys (#13023)
+* Async update (#13025)
+* [core,rdstls] add endpoint FedAuth token authentication (#13026)
+* Resource limits (#13027)
+* Path checks (#13028)
+* [emu,scard] require Lc of 2 for select-by-FID in vgids_ins_select (#13030)
+* runtime hardening (#13032)
+* H264 fix (#13036)
+* [crypto,x509] improve hardening against embedded \0 (#13035)
+* [core,rail] unify RAIL_UNICODE_STRING handling (#13039)
+* [channels,rail] rail_server_handle_messages (#13037)
+* [channels,rdpecam] fix reading of config descriptor (#13042)
+* [codec,av1] bound decode output to decoded frame size (#13044)
+* Bounds check fixes (#13043)
+* [codec,av1] add region rects checks like with AVC modes (#13045)
+* Ios fixes (#13029)
+* Ios warn fixes (#13047)
+* [utils,smartcard] exclude ndr padding from returned buffer length (#13046)
+* Serial alloc checks (#13049)
+* Android build fixes (#13050)
+* [client,android] update build (#13051)
+
+## New Contributors
+* @kogekiplay made their first contribution in (#13007)
+
+For a complete and detailed change log since the last release run:
+git log 3.29.0...3.28.0
+
+# 2026-07-06 Version 3.28.0
+
+Feature and bugfix release.
+* iOS client has been revived by @bho3538
+* Android client build updates by @svncibrahim
+* Windows client did get some updates by @zorjen122
+* Server side smartcard API by @joantolo
+* Improved client statistics interface, now also supports static channels
+* Improved fuzzer and unit tests
+* CMake preset support making it easier to create a working build configuration,
+  see https://github.com/FreeRDP/FreeRDP/wiki/Compilation#presets
+
+## CVE
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-pjqx-v446-x7fc
+  CVE-XXXX-XXXXX by Claude and Ada Logics
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-9g22-w2gr-vcmp
+  CVE-XXXX-XXXXX by Claude and Ada Logics
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-f27x-frr8-j9hc
+  CVE-XXXX-XXXXX by Claude and Ada Logics
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-72j9-356v-88xq
+  CVE-XXXX-XXXXX by Claude and Ada Logics
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-v64m-xxfw-hrv6
+  CVE-XXXX-XXXXX by @rahulhoysala
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-mp3f-59pg-c5pp
+  CVE-2026-57158 by @hextheshadow
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-47fr-jw86-c3fj
+  CVE-2026-57157 by Owais Lone (Owais Lone)
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-v5wf-j8j4-77h7
+  CVE-2026-57156 by @HEXER365
+
+## Security
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-rq8f-9xjh-pr3m
+
+## What's Changed
+* feat(client): Modernize iOS client. (iFreeRDP) (#12949)
+* [client,ios] remove some deprecation warnings (#12981)
+* Ios cmake (#12997)
+* [client,ios] add openh264 build (#13003)
+* [client,android] riscv64 support (#12923)
+* [client,android] make release configurable (#12929)
+* [client,android] allow overriding version name and code (#12931)
+* [client,android] redesign touch pointer (#12946)
+* [client,android] move external deps to own CMake file (#12992)
+* Android build (#12917)
+* [client,sdl] guard file clipboard (#12911)
+* [client,sdl] Askpass (#12925)
+* [client,sdl] throw a real exception instead of invalid bare throw (#12936)
+* [client,sdl] run sdl_OnUserNotificationEventHandler on SDL thread (#12941)
+* [client,sdl] fix mouse and touchpad natural scroll setting being ignored (#12967)
+* fix(client/win) Reset scroll offset when hiding scrollbars (#7536) (#12939)
+* feat(client/win): improve wfreerdp fullscreen floatbar controls (#12851)
+* Channel stats (#12964)
+* Statistics interface (#12968)
+* [core,channels] add freerdp_static_client_channel_stat_free (#12966)
+* Support RDPDR Device Control Responses (#12756)
+* Wlog appender context (#12907)
+* [winpr,image] bound unaligned bitmap read to declared image size (#12910)
+* [codec,color] add empty checks for copy (#12912)
+* Win credssp (#12913)
+* Adjustments for building on Windows with MSVC (#12916)
+* channel statistics and random gateway connection id (#12922)
+* [channels,video] bound frame copy to current surface size (#12919)
+* OSS-Fuzz: Add new fuzzers targets channels rail client (#12924)
+* [utils,smartcard] validate cbAtr against rgbAtr size on unpack (#12928)
+* [channels,rdpecam] fix device added notification parsing (#12930)
+* [emu,scard] bound select-by-AID compare to GIDS AID length (#12933)
+* Rails feature setting, xfreerdp kbd sync (#12927)
+* [core,orders] fix inverted overflow guard in update_read_delta_points (#12938)
+* [codec,mppc] add missing out of bounds check (#12942)
+* [channels,tsmf] bound visible rect read in update_geometry_info (#12943)
+* [channels,rdpecam] bound channel name read in device removed pdu (#12945)
+* [core,tcp] improve connection failure logging (#12950)
+* Warn fixes (#12951)
+* [codec,planar] fix range check, abort early (#12952)
+* [channels,rdpsnd,mac] recover audio after AVAudioEngine config change (#12958)
+* [codec,planar] range-check before control byte read in plane rle (#12956)
+* [channel,rail] fix tests and uninitialized variables (#12960)
+* [channels,rdpdr] fix off-by-one scan length in rdpdr_read_ustring (#12961)
+* [channels,remdesk] validate ctl pdu DataLength against received stream (#12955)
+* [channels,rdpsnd] bound client format pdu length to UINT16 (#12962)
+* Winpr harden parser checks (#12965)
+* [winpr,file] bound '?' wildcard match to file name length (#12969)
+* [channels,urbdrc] bound msusb descriptor reads to received length (#12971)
+* [core,update] fix the calling convention for Windows x86 (#12973)
+* [channels,drive] reject trailing '..' in contains_dotdot (#12974)
+* OSS-Fuzz: Add new fuzzer targeets WinPRClipboard processing (#12976)
+* Pr/12970 (#12975)
+* Cliprdr and rdpsnd fixes (#12980)
+* [channels,rail] fix order read/cleanup (#12979)
+* [core,utils] skip AuthenticateEx for RDP/TSL/SMARTCARD_PIN/FIDO_PIN (#12978)
+* replace NULL with nullptr (#12982)
+* [channels,cliprdr] fix pdu-tracker leak (#12983)
+* Fuzz fixes bmp (#12986)
+* [core,gateway] fix const warning (#12987)
+* [channels] bound dynamic channel message header to received length (#12988)
+* cmake: add minimal preset for lightweight builds (#12989)
+* Cleanup all (#12991)
+* Range checks (#12993)
+* Deprecations (#12994)
+* [winpr,string] fix winpr_strnstr needle length (gateway SIGSEGV) (#12995)
+* Bmp cache (#12999)
+* [codec,dsp] ensure out capacity in opus encode (#13001)
+* [winpr,string] match winpr_strnstr fallback to native strnstr (#13002)
+* Smartcard fixes (#13009)
+* [client,common] /smartcard-logon pass PEM directly (#13011)
+* Correct UTF-8 to UTF-16 length (#13012)
+
+## New Contributors
+* @sldr made their first contribution in (#12916)
+* @arthurscchan made their first contribution in (#12924)
+* @TBX3D made their first contribution in (#12936)
+* @rohitkuma1313 made their first contribution in (#12958)
+* @kunimart made their first contribution in (#12967)
+* @apocelipes made their first contribution in (#12973)
+* @bho3538 made their first contribution in (#12949)
+* @insaf021 made their first contribution in (#12988)
+* @insaf021 made their first contribution in (#12988)
+* @kapott made their first contribution in (#12995)
+
+For a complete and detailed change log since the last release run:
+git log 3.28.0...3.27.1
+
+# 2026-06-17 Version 3.27.1
+
+Bugfix/regression fix and android feature release
+What did change:
+* Fixed a regression with gateway connections
+* Android client RDPECAM support
+* Android client RAILS support
+
+## CVE
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-c495-h83v-3prp
+
+## What's Changed
+* [core,utils] fix guid2str (#12898)
+* [client,android] Add RAIL/RemoteApp window support (#12887)
+* Bitmap decode (#12899)
+* [client,rdpecam,android] Add camera redirection support (#12894)
+* [tools] make the generator create more clang-format friendly code (#12900)
+
+For a complete and detailed change log since the last release run:
+git log 3.27.1...3.27.0
+
+# 2026-06-15 Version 3.27.0
+
+A major feature / bugfix / cleanup release
+What did change:
+ * Password hash now uses a custom SSPI attribute on non windows systems
+ * TLS seclevel now defaults to 2 and a minimum of TLS 1.2 is required.
+   Client side the /tls:seclevel:<number> and /tls:enforce:<version> allow to override these.
+   Server implementations can manually set these with rdpSettings::FreeRDP_TLSMinVersion and
+   rdpSettings::FreeRDP_TlsSecLevel
+   (See https://docs.openssl.org/3.0/man3/SSL_CTX_set_security_level/ for more details)
+ * The RDP proxy got a fix which removed (unstable) structs from public headers. There are no
+   known users of that (internal) API, but if you happen to be one please ping us.
+ * Android client got some huge updates again (thank @svncibrahim)
+ * Enhancements with Azure/Entra support: some (known but not officially documented) extensions
+   have been added to make these connections more stable.
+ * keyboard mapping
+ * Allow RDPDR channel to pass additional arguments to the channel. Does not break existing behaviour
+   but allows a channel supporting this to query the additional arguments for further use.
+ * Fix some WinPR deprecation handling, add WITHOUT_WINPR_3x_DEPRECATED that allows building
+   without any symbol deprecated during the stable 3 series
+ * Some client side statistics logging API was added. By default prints a (trace) log at the
+   end of a session, but it can be queried at any time for some connection details.
+
+## CVE (Reported by SecBuddyF, Tencent Keen Lab)
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-9gxm-3mf5-f5cx
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-7rp4-66mc-j9vx
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-3mmf-qh4f-frm6
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-vx73-w5q6-7jqr
+* https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-5c5v-f78v-h2f6 (Reported by @f9j2n6nd8k-eng)
+
+## What's Changed
+* Call winpr_InitializeSSL in TestWinPRUtils/TestNTLM (#12746)
+* [core,codec] Fix invalid overlap check (#12753)
+* Improve clipboard massive files copying performance (#12743)
+* [crypto,certificate] Honor BIO_should_retry (#12755)
+* Unify PEM read routines (#12758)
+* Build updates (#12772)
+* Fix sdl3 clipboard for files (#12759)
+* url: replace http://www.freerdp.com (#12781)
+* Fuzz/analyzer fixes (#12791)
+* [winpr,sspi] replace password-length heuristic with explicit hash (#12782)
+* Claude suggestions (#12792)
+* Disp check fix (#12795)
+* [core,settings] Raise default security level (#12752)
+* [clang,tidy] use workflow from ZedThree (#12806)
+* Improve FIPS mode support (#12811)
+* Lots of android specific improvements (#12773, #12777, #12783, #12784, #12785,
+  #12786, #12787, #12788, #12807, #12812, #12815, #12818, #12819, #12820, #12822,
+  #12748, #12750)
+* [channels,audin] fix opensles error handling (#12751)
+* [channels,audin] fix iOS and mac backends (#12864)
+* [channels,cliprdr] refactor server channel (#12810)
+* [channels,cliprdr] reset stream after use (#12855)
+* [channels,drdynvc] add new PubSub events (#12760)
+* [channels,rail] fix client handshake response (#12780)
+* [channels,rdpdr] various enhancements (#12800, #12797, #12803)
+* [channels,rdpgfx] fix server frame command returning success on write failure (#12828)
+* [channels,rdpsnd] reject client audio formats with zero nChannels/nBlockAlign (server-side DoS) (#12829)
+* [channels,rdpsnd] skip unusable playback backend during selection (#12830)
+* Refactor printer queue (#12817)
+* [ci,freebsd] update ci (#12823, #12824, #12825)
+* [cmake,simd] guard CMAKE_OSX_ARCHITECTURES (#12802)
+* [cmake] replace find_package(GLOBAL) (#12837)
+* [cmake] fix use of pkg_check_module (#12838)
+* [winpr,input] complete japanese keyboard mapping (#12836)
+* winpr/input: Fix numpad mapping for japanese keyboards (#12845)
+* [core,gateway] validate auth blob length in rdg_process_extauth_sspi (#12856)
+* Restore fullscreen when maximizing a toggled fullscreen window (#12849)
+* Fix(wfreerdp): Refresh Windows frame after fullscreen restore (#12848)
+* Fix copying multiple items of the same type between xfreerdp sessions (#12834)
+* [core,event] add StateChanged event (#12858)
+* [core,nego] bound cookie tag check to remaining length (#12862)
+* codec stats (#12860)
+* Various warning fixes (#12749, #12813, #12866, #12831)
+* [core,client] add PubSub events (#12757)
+* [core,client] use correct interface pointer (#12766)
+* [client,rdpewa] filter UserNotify events (#12767)
+* [client,windows] honor /from-stdin in wfreerdp (#12821)
+* [client,x11] release normal keys before modifiers (#12868)
+* fix(client/SDL): do not treat an unrecognized mouse button as fatal (#12847)
+* Proxy client context (#12865)
+* [core,update] filter out unused/unknown (#12870)
+* Azure/Entra undocumented stuff and request compaction (#12872, #12871, #12770)
+* Various bounds checks (#12873, #12857)
+* Sspi separate ansi unicode (#12874)
+* Ci update qa (#12875)
+* [channels,gfx] extract remaining header length (#12876)
+* [cache,glyph] bound offset read to buffer length (#12881)
+* Expose the correlationId in settings (#12879)
+* [winpr,wtypes] fix WINPR_C23_ENUM_TYPE (#12882)
+* [server,proxy] pass ntlm hostname (#12877)
+
+## New Contributors
+* @ramnes made their first contribution in (#12782)
+* @grioghar made their first contribution in (#12829)
+* @scottgeigel2 made their first contribution in (#12821)
+* @metsw24-max made their first contribution in (#12856)
+* @zorjen122 made their first contribution in (#12849)
+
+For a complete and detailed change log since the last release run:
+git log 3.27.0...3.26.0
+
+# 2026-05-06 Version 3.26.0
+
+Mostly a bugfix and maintenance release with a few nice additions:
+* On mac os the H264 decoder now supports VideoToolbox
+* The android client got a big overhaul, more has been promised
+
+## CVE fixes
+* 3 High ranking CVE, no numbers assigned yet.
+  Monitor https://github.com/FreeRDP/FreeRDP/security/advisories for updates
+
+## What's Changed
+* cmake: Findyuv: Use correct pkgconfig name (#12666)
+* Remove deallocator attribute from rfx_message_free (#12681)
+* [winpr,utils] improve winpr/ntlm.h (#12677)
+* rdpecam-v4l: stop the capture thread when streaming is cleared (#12690)
+* fix(winpr,ncrypt): support PIV retired key slots for smartcard logon (#12684)
+* [core,instance] fix deprecation guards (#12691)
+* [ci,alt-arch] enable internal MD4, MD5 and RC4 (#12692)
+* Add VideoToolbox H.264 support for ffmpeg (#12694)
+* [client,common] add /args-from:file:<name> syntax (#12697)
+* [ci,freebsd] update freebsd builds (#12698, #12700, #12701, #12702)
+* [client, android] UI modernization, SQLCipher and more (#12685, #12686, #12687, #12730,
+  #12731, #12736, #12737, #12688)
+* [cmake,deps] use alias target for sso-mib (#12706)
+* [core,settings] add auto reconnect triggered flag (#12709)
+* Force YUV420P when videotoolbox is used (#12711)
+* Release cleanups (#12712)
+* [gdi,gfx] fix bounds checks and proxy unit tests (#12713)
+* Improved input checks (#12714)
+* [winpr,utils] add unit tests for command line parser (#12716)
+* Cmdline fixes (#12717)
+* [codec,planar] fix bounds checks (#12718)
+* [client,common] add freerdp_client_settings_parse_command_line_argume… (#12724)
+* [winpr,sspi] clean up ntlm code (#12732)
+
+## New Contributors
+* @fstanis made their first contribution in (#12694)
+
+For a complete and detailed change log since the last release run:
+git log 3.26.0...3.25.0
+
+# 2026-04-23 Version 3.25.0
+
+Bugfix and feature release.
+* Experimental AV1 support has been added. This currently works only with FreeRDP based servers.
+* Most notably there is now support for [MS-RDPEWA] (FIDO2 redirection)
+* Android client received a (small) facelift
+* Improved SDL3 client drawing performance
+* Console output support for SDL3 (windows) and windows native client
+* RDP proxy now supports NSCodec and RFX modes.
+* RDP PRoxy now has smartcard emulation and SAM file support (via config file)
+* Smartcard KSP support for NLA authentication
+
+## CVE fixes
+* CVE-2026-40254
+
+## What's Changed
+* [winpr,wlog] add WLog_SetGlobalPrefix (#12497)
+* [channels,video] fix wrong cast (#12511)
+* [codec,openh264] reject encoder ABI mismatch on runtime-loaded library (#12510)
+* [client,sdl] create a copy of rdpPointer (#12512)
+* [codec,video] properly pass intermediate format (#12518)
+* [utils, signal] lazily initialize Windows CRITICAL_SECTION to match POSIX static mutex behavior (#12520)
+* winpr: improve libunwind backtraces (#12530)
+* [server,shadow] remember selected caps (#12528)
+* Zero credential data before free in NLA and NTLM context (#12532)
+* [server,proxy] ignore missing client in input channel (#12536)
+* [server,proxy] ignore rdpdr messages (#12537)
+* [winpr,sspi] improve kerberos logging (#12538)
+* Codec fixes (#12542)
+* [winpr,sspi] Fix context nullptr handling (#12543)
+* Dev 3.24.3 dev0 (#12545)
+* Fix memory leak in `gdi_create_bitmap()` on `gdi_CreateBitmap` failure (`libfreerdp/gdi/graphics.c`) (#12547)
+* Fix memory leak in `vgids_read_do_fkt()` on `Stream_New` failure (`libfreerdp/emu/scard/smartcard_virtual_gids.c`) (#12548)
+* Proxy config improve (#12549)
+* Proxy config improve (#12550)
+* [client,sdl] clamp cursor hotspot (#12553)
+* RFC: Research/av1 codec extension (#12527)
+* [winpr,kerberos] fix krb_log_context_encryption (#12555)
+* [client,sdl] fix global init return check (#12558)
+* Fix remote credential with windows11h2 (#12560)
+* Proxy scard auth improvements (#12561)
+* [winpr,sspi] guard krb5_get_etype_info (#12562)
+* [utils,smartcard] fix STATUS_BUFFER_TOO_SMALL (#12564)
+* [client,common] do not manipulate security settings for smartcard-logon (#12567)
+* [channels,audin] fix regression for microphone (#12570)
+* [client,sdl] add SDL_KMOD_MODE and SDL_KMOD_LEVEL5 (#12569)
+* Fix unbound strlen on slotDescription (#12571)
+* build: Update FindFFmpeg.cmake to support Apple frameworks with 'lib' prefix (#12565)
+* [channels,rdpewa] add WebAuthn virtual channel support (#12572)
+* [core] fix freerdp_get_nla_sspi_error always returning 0 on client (#12574)
+* [ci] enable rdpewa channel (#12576)
+* small refactoring (#12578)
+* Rdpewa unify notifications (#12581)
+* [client,sdl] fix crash when clicking 'cancel' on PIN popup (#12580)
+* [channels,drive] refine bounds checks (#12584)
+* fix: smartcard logon with ECC keys and minidriver-assigned container names (#12585)
+* Various papercuts (#12583)
+* fix: console output on Windows client (#12573)
+* [winpr,crt] dump stack on aligned memory errors (#12588)
+* [client,x11] keep scancode input for Ctrl/Alt/Super combinations in /kbd:unicode mode (#12590)
+* [codec,progressive] fix underflow guard in progressive_rfx_quant_sub (#12592)
+* fix: wfreerdp floatbar visibility (#12594)
+* [winpr,json] return a copy from WINPR_JSON_Print* (#12595)
+* [client,sdl] drop WITH_DEBUG_SDL_EVENTS (#12599)
+* Ncrypt and asn1 cleanup (#12604)
+* Video channel fix (#12593)
+* [codec,h264] fix media foundation backend (#12606)
+* fix(sdl): detect Hyprland and river in tryFallback() (#12608)
+* Proxy stress fixes (#12597)
+* Add new fuzzer tests (#12613)
+* fix(sdl): use SDL_Renderer instead of software surfaces (#12607)
+* fix(sdl): BFS neighbor walk pop/begin mismatch in addOrUpdateDisplay (#12614)
+* fix(sdl): promote first monitor as primary when subset excludes primary (#12618)
+* [ci,android] default to only aarch64 (#12622)
+* Fix process exit code on non-pidfd platforms (macOS, BSD)#12534) (#12586)
+* warning cleanups (#12626)
+* fix: prevent PostQuitMessage in RemoteApp WM_DESTROY handler (#12629)
+* [winpr,ntlm] fix message cleanup across the SSPI lifecycle (#12609)
+* Code bug fixes (#12632)
+* Oss fixes (#12633)
+* [client,android] add an option to enable keeping screen on when connected (#12630)
+* [client, android] Fix layout overlaps, migrate to AndroidX, and update UI components (#12628)
+* Proxy config tests (#12636)
+* Proxy config optional targethost (#12637)
+* [client,sdl] set SDL_HINT_SCREENSAVER_INHIBIT_ACTIVITY_NAME (#12639)
+* Nightly deb fix (#12640, #12641, #12649, #12650, #12642, #12643)
+* [winpr,input] fix korean keyboard mapping (#12646)
+* [client,sdl] set hints before SDL_Init (#12644)
+* Sdl inhibit option (#12647)
+* [client,X11] fix residual race in xf_clipboard_formats_free (#12648)
+* (sdl3): Fix oversized window on HiDPI Wayland (#12635)
+* [cache,bitmap] fix off-by-one in bitmap_cache_put bounds check (#12651)
+* [winpr,sspi] free fields buffer immediately (#12654)
+* [codec,dsp] fix fencepost error in dsp_ima_clamp_step (#12655)
+
+## New Contributors
+* @Kotivskyi made their first contribution in (#12532)
+* @Skinner927 made their first contribution in (#12571)
+* @bluca made their first contribution in (#12572)
+* @sitiom made their first contribution in (#12573)
+* @mtixt made their first contribution in (#12590)
+* @MrVampy made their first contribution in (#12608)
+* @ZackaryShen made their first contribution in (#12629)
+* @parasol-aser made their first contribution in (#12609)
+* @svncibrahim made their first contribution in (#12628)
+
+**Full Changelog**: https://github.com/FreeRDP/FreeRDP/compare/3.24.1...3.25.0
+
+# 2026-03-25 Version 3.24.2
+
+Bug and security fix release
+
+## CVE fixes
+
+We got 4 High and 2 Moderate security reports from
+* Calvin Young - eWalker Consulting
+* Enoch Chow - Isomorph Cyber
+
+and 2 Modreate reports from
+* [Sebastian Alba Vives] ***@***.***) Sebastián Alba
+
+and 1 Moderate report from
+* @prahal
+
+CVE have been requested but not assigned yet. They will be published once assigned at
+https://github.com/FreeRDP/FreeRDP/security
+
+## What's Changed
+* [channels,video] fix wrong cast (#12511)
+* [codec,openh264] reject encoder ABI mismatch on runtime-loaded library (#12510)
+* [client,sdl] create a copy of rdpPointer (#12512)
+* [codec,video] properly pass intermediate format (#12518)
+* [utils, signal] lazily initialize Windows CRITICAL_SECTION to match POSIX static mutex behavior (#12520)
+* winpr: improve libunwind backtraces (#12530)
+* [server,shadow] remember selected caps (#12528)
+* Zero credential data before free in NLA and NTLM context (#12532)
+* [server,proxy] ignore missing client in input channel (#12536)
+* [server,proxy] ignore rdpdr messages (#12537)
+* [winpr,sspi] improve kerberos logging (#12538)
+* Codec fixes (#12542)
+
+## New Contributors
+* @Kotivskyi made their first contribution in #12532
+
+For a complete and detailed change log since the last release run:
+git log 3.24.2...3.24.1
+
+# 2026-03-18 Version 3.24.1
+
+Minor bugfix release addression two regressions found in previous 3.24.0 release
+
+## What's Changed
+* [warnings] fix various sign and cast warnings (#12480)
+* [client,x11] start with xfc->remote_app = TRUE; (#12491)
+* Sam file read regression fix (#12484)
+* [ncrypt,smartcardlogon] support ECC keys in PKCS#11 smartcard enumeration (#12490)
+* Fix: memory leak in rdp_client_establish_keys() in libfreerdp/core/co… (#12494)
+* Fix memory leak in `freerdp_settings_int_buffer_copy()` on error paths (`libfreerdp/core/settings.c`) (#12486)
+* Code Cleanups (#12493)
+* Fix: memory leak in PCSC_SCardListReadersW() in winpr/libwinpr/smartc… (#12495)
+* [channels,telemetry] use dynamic logging (#12496)
+* [channel,gfx] use generic plugin log (@12498, #12499)
+* [channels,audin] set error when audio_format_read fails (#12500)
+* [channels,video] unify error handling (#12502)
+* Fastpath fine grained lock (#12503)
+* [core,update] make the PlaySound callback non-mandatory (#12504)
+* Refinements: RPM build updates, FIPS improvements (#12506)
+
+## New Contributors
+* @dko-strd made their first contribution in #12490
+* @huanghuihui0904 made their first contribution in #12486
+
+For a complete and detailed change log since the last release run:
+git log 3.24.1...3.24.0
+
+# 2026-03-13 Version 3.24.0
+
+A new release with bugfixes and many improvements for users and developers alike.
+* Completed the [[nodiscard]] marking of the API to warn about problematic
+  unchecked use of functions
+* Added full C23 support (default stays at C11) to allow new compilers
+  to do stricter checking
+* Improved X11 and SDL3 clients
+* Improved smartcard support
+* proxy now supports RFX graphics mode
+
+## Security Advisories
+* CVE-2026-29774
+* CVE-2026-29775
+* CVE-2026-29776
+* CVE-2026-31806
+* CVE-2026-31883
+* CVE-2026-31884
+* CVE-2026-31885
+* CVE-2026-31897
+
+## What's Changed
+* Attribute nodiscard related chanes (#12325, #12360, #12395, #12406,
+  #12421, #12426, #12177, #12403, #12405, #12407, #12409, #12408,
+  #12412, #12413)
+* c23 related improvements (#12368, #12371, #12379, #12381, #12383,
+  #12385, #12386, #12387, #12384)
+* Generic code cleanups (#12382, #12439, #12455, #12462, #12399, #12473)
+* [core,utils] ignore NULL values in remove_rdpdr_type (#12372)
+* [codec,fdk] revert use of WinPR types (#12373)
+* [core,gateway] ignore incomplete rpc header (#12375, #12376)
+* [warnings] make function declaration names consistent (#12377)
+* [libfreerdp] Add new define for logon error info (#12380)
+* [client,x11] improve rails window locking (#12392)
+* Reload fix missing null checks (#12396)
+* Bounds checks (#12400)
+* [server,proxy] check for nullptr before using scard_call_context (#12404)
+* [uwac] fix rectangular glitch around surface damage regions (#12410)
+* Address various error handling inconsistencies (#12411)
+* [core,server] Improve WTS API locking (#12414)
+* Address some GCC compile issues (#12415, #12420)
+* Winpr atexit (#12416)
+* [winpr,smartcard] fix function pointer casts (#12422)
+* Xf timer fix (#12423)
+* [client,sdl] workaround for wlroots compositors (#12425)
+* [client,sdl] fix SdlWindow::query (#12378)
+* [winpr,smartcard] fix PCSC_ReleaseCardContext (#12427)
+* [client,x11] eliminate obsolete compile flags (#12428)
+* [client,common] skip sending input events when not connected (#12429)
+* Input connected checks (#12430)
+* Floatbar and display channel improvements (#12431)
+* [winpr,platform] fix WINPR_ATTR_NODISCARD definition (#12432)
+* [client] Fix writing of gatewayusagemethod to .rdp files (#12433)
+* Nodiscard finetune (#12435)
+* [core] fix missing gateway credential sync (#12436)
+* [client,sdl3] limit FREERDP_WLROOTS_HACK (#12441)
+* [core,settings] Allow FreeRDP_instance in setter (#12442)
+* [codec,h264] make log message trace (#12444)
+* X11 rails improve (#12440)
+* [codec,nsc] limit copy area in nsc_process_message (#12448)
+* Proxy support RFX and NSC settings (#12449)
+* [client,common] display a shortened help on parsing issues (#12450)
+* [winpr,smartcard] refine locking for pcsc layer (#12451)
+* [codec,swscale] allow runtime loading of swscale (#12452)
+* Swscale fallback (#12454)
+* Sdl multi scaling support (#12456)
+* [packaging,flatpak] update runtime and dependencies (#12457)
+* [codec,video] add doxygen version details (#12458)
+* [github,templates] update templates (#12460)
+* [client,sdl] allow FREERDP_WLROOTS_HACK for all sessions (#12461)
+* [warnings,nodiscard] add log messages for failures (#12463)
+* [gdi,gdi] ignore empty rectangles (#12467)
+* Smartcard fix smartcard-login, pass rdpContext for abort (#12466)
+* [winpr,smartcard] fix compiler warnings (#12469)
+* [winpr,timezone] fix search for transition dates (#12468)
+* [client,common] improve /p help (#12471)
+* Scard logging refactored (#12472)
+* [emu,scard] fix smartcard emulation (#12475)
+* Sdl null cursor (#12474)
+
+## New Contributors
+* @larsch made their first contribution in #12410
+
+For a complete and detailed change log since the last release run:
+git log 3.24.0...3.23.0
+
+# 2026-02-25 Version 3.23.0
+
+A new release and again a lot of changes:
+* We've received in depth analysis of FreeRDP client code and have addressed shortcomings uncovered by these.
+CVE-2026-26965
+CVE-2026-26955
+CVE-2026-26271
+CVE-2026-25997
+CVE-2026-25959
+CVE-2026-25955
+CVE-2026-25954
+CVE-2026-25953
+CVE-2026-25952
+CVE-2026-25942
+CVE-2026-25941
+
+Another weakness was reported, see https://github.com/FreeRDP/FreeRDP/security/advisories/GHSA-qcfc-ghxr-h927
+
+* Configuration isolation was added. 3rd party client/server applications should check
+  the new API freerdp_setApplicationDetails and winpr_setApplicationDetails which allows
+  using a custom namespace for configuration files and runtime data per application
+* For developers, we've marked most of the API with [[nodiscard]] now so compilers
+  might start complaining about unchecked return values now. This is intentional and should
+  give some incentive to clean up code. Functions where the return is optional have been
+  omitted. For the time being these checks are automatically applied for FreeRDP builds, external
+  projects can opt in by defining WINPR_DEFINE_ATTR_NODISCARD in their build system.
+* For developers: Please start testing your applications against FreeRDP builds with
+  `-DWITHOUT_FREERDP_3x_DEPRECATED=ON` to ensure you're not using some soon to be removed API.
+* SDL client did get a huge update, multimonitor and high DPI modes are now much improved
+* We got a contribution for smartcard channel adding support for new attributes, so more
+  applications might work now.
+
+## What's Changed
+* Sdl cleanup (#12202)
+* [client,sdl] do not apply window offset (#12205)
+* [client,sdl] add SDL_Error to exceptions (#12214)
+* Rdp monitor log (#12215)
+* [winpr,smartcard] implement some attributes (#12213)
+* [client,windows] Fix return value checks for mouse event functions (#12279)
+* [channels,rdpecam] fix sws context checks (#12272)
+* [client,windows] Enhance error handling and context validation (#12264)
+* [client,windows] Add window handle validation in RDP_EVENT_TYPE_WINDOW_NEW (#12261)
+* [client,sdl] fix multimon/fullscreen on wayland (#12248)
+* Vendor by app (#12207)
+* [core,gateway] relax TSG parsing (#12283)
+* [winpr,smartcard] simplify PCSC_ReadDeviceSystemName (#12273)
+* [client,windows] Implement complete keyboard indicator synchronization (#12268)
+* Fixes more more more (#12286)
+* Use application details for names (#12285)
+* warning cleanups (#12289)
+* Warning cleanup (#12291)
+* [client,windows] Enhance memory safety with NULL checks and resource protection (#12271)
+* [client,x11] apply /size:xx% only once (#12293)
+* Freerdp config test (#12295)
+* [winpr,smartcard] fix returned attribute length (#12296)
+* [client,SDL3] Fix properly handle smart-sizing with fullscreen (#12298)
+* [core,test] fix use after free (#12299)
+* Sign warnings (#12300)
+* [cmake,compiler] disable -Wjump-misses-init (#12301)
+* [codec,color] fix input length checks (#12302)
+* [client,sdl] improve cursor updates, fix surface sizes (#12303)
+* Sdl fullscreen (#12217)
+* [client,sdl] fix move constructor of SdlWindow (#12305)
+* [utils,smartcard] check stream length on padding (#12306)
+* [android] Fix invert scrolling default value mismatch (#12309)
+* Clear fix bounds checks (#12310)
+* Winpr attr nodiscard fkt ptr (#12311)
+* [codec,planar] fix missing destination bounds checks (#12312)
+* [codec,clear] fix destination checks (#12315)
+* NSC Codec fixes (#12317)
+* Freerdp api nodiscard (#12313)
+* [allocations] fix growth of preallocated buffers (#12319)
+* Rdpdr simplify (#12320)
+* Resource fix (#12323)
+* [winpr,utils] ensure message queue capacity (#12322)
+* [server,shadow] fix return and parameter checks (#12330)
+* Shadow fixes (#12331)
+* [rdtk,nodiscard] mark rdtk API nodiscard (#12329)
+* [client,x11] fix XGetWindowProperty return handling (#12334)
+* Win32 signal (#12335)
+* [channel,usb] fix message parsing and creation (#12336)
+* [cmake] Define WINPR_DEFINE_ATTR_NODISCARD (#12338)
+* Proxy config fix (#12345)
+* [codec,progressive] refine progressive decoding (#12347)
+* [client,sdl] fix sdl_Pointer_New (#12350)
+* [core,gateway] parse [MS-TSGU] 2.2.10.5 HTTP_CHANNEL_RESPONSE_OPTIONAL (#12353)
+* X11 kbd sym (#12354)
+* Windows compile warning fixes (#12357,#12358,#12359)
+
+## New Contributors
+* @tsz8899 made their first contribution in (#12279)
+* @morgan9e made their first contribution in (#12298)
+* @Wladefant made their first contribution in (#12309)
+
+For a complete and detailed change log since the last release run:
+git log 3.23.0...3.22.0
+
+# 2026-01-28 Version 3.22.0
+
+Major bugfix release:
+* Complete overhaul of SDL client
+* Introduction of new WINPR_ATTR_NODISCARD macro wrapping compiler or C language
+  version specific [[nodiscard]] attributes
+* Addition of WINPR_ATTR_NODISCARD to (some) public API functions so usage errors
+  are producing warnings now
+* Add some more stringify functions for logging
+* We've received CVE reports, check
+  https://github.com/FreeRDP/FreeRDP/security/advisories for more details!
+  * @Keryer reported an issue affecting client and proxy:
+    * CVE-2026-23948
+  * @ehdgks0627 did some more fuzzying and found quite a number of client side bugs.
+    * CVE-2026-24682
+    * CVE-2026-24683
+    * CVE-2026-24676
+    * CVE-2026-24677
+    * CVE-2026-24678
+    * CVE-2026-24684
+    * CVE-2026-24679
+    * CVE-2026-24681
+    * CVE-2026-24675
+    * CVE-2026-24491
+    * CVE-2026-24680
+
+## What's Changed
+* [core,info] fix missing NULL check (#12157)
+* [gateway,tsg] fix TSG_PACKET_RESPONSE parsing (#12161)
+* Allow querying auth identity with kerberos when running as a server (#12162)
+* Sspi krb heimdal (#12163)
+* Tsg fix idleTimeout parsing (#12167)
+* [channels,smartcard] revert 649f7deee4e32ecedf0dcdfe571e54134b5be81e (#12166)
+* [crypto] deprecate er and der modules (#12170)
+* [channels,rdpei] lock full update, not only parts (#12175)
+* [winpr,platform] add WINPR_ATTR_NODISCARD macro (#12178)
+* Wlog cleanup (#12179)
+* new stringify functions & touch API defines (#12180)
+* Add support for querying SECPKG_ATTR_PACKAGE_INFO to NTLM and Kerberos (#12171)
+* [channels,video] measure times in ns (#12184)
+* [utils] Nodiscard (#12187)
+* Error handling fixes (#12186)
+* [channels,drdynvc] check pointer before reset (#12189)
+* Winpr api def (#12190)
+* [winpr,platform] drop C23 [[nodiscard]] (#12192)
+* [gdi] add additional checks for a valid rdpGdi (#12194)
+* Sdl3 high dpiv2 (#12173)
+* peer: Disconnect if Logon() returned FALSE (#12196)
+* [channels,rdpecam] fix PROPERTY_DESCRIPTION parsing (#12197)
+* [channel,rdpsnd] only clean up thread before free (#12199)
+* [channels,rdpei] add RDPINPUT_CONTACT_FLAG_UP (#12195)
+
+
+For a complete and detailed change log since the last release run:
+git log 3.22.0...3.21.0
+
+# 2026-01-19 Version 3.21.0
+
+Bugfix release with a few new API functions addressing shortcomings with
+regard to input data validation.
+Thanks to @ehdgks0627 we have fixed the following additional (medium)
+client side vulnerabilities:
+* CVE-2026-23530
+* CVE-2026-23531
+* CVE-2026-23532
+* CVE-2026-23533
+* CVE-2026-23534
+* CVE-2026-23732
+* CVE-2026-23883
+* CVE-2026-23884
+
+## What's Changed
+* [client,sdl] fix monitor resolution (#12142)
+* [codec,progressive] fix progressive_rfx_upgrade_block (#12143)
+* Krb cache fix (#12145)
+* Rdpdr improved checks (#12141)
+* Codec advanced length checks (#12146)
+* Glyph fix length checks (#12151)
+* Wlog printf format string checks (#12150)
+* [warnings,format] fix format string warnings (#12152)
+* Double free fixes (#12153)
+* [clang-tidy] clean up code warnings (#12154)
+
+For a complete and detailed change log since the last release run:
+git log 3.21.0...3.20.2
+
+# 2026-01-14 Version 3.20.2
+
+Patch release fixing a regression with gateway connections introduced with 3.20.1
+
+## What's Changed
+* Warnings and missing enumeration types (#12137)
+
+For a complete and detailed change log since the last release run:
+git log 3.20.2...3.20.1
+
+# 2026-01-14 Version 3.20.1
+
+New years cleanup release. Fixes some issues reported and does a cleaning sweep
+to bring down warnings.
+Thanks to @ehdgks0627 doing some code review/testing we've uncovered the following
+(medium) vulnerabilities:
+* CVE-2026-22851
+* CVE-2026-22852
+* CVE-2026-22853
+* CVE-2026-22854
+* CVE-2026-22855
+* CVE-2026-22856
+* CVE-2026-22857
+* CVE-2026-22858
+* CVE-2026-22859
+
+These affect FreeRDP based clients only, with the exception of CVE-2026-22858
+also affecting FreeRDP proxy. FreeRDP based servers are not affected.
+
+## What's Changed
+* [ci,abi] use abigail-tools from repo (#12079)
+* [ci,abi] fix missing ABI suppressions (#12080)
+* [ci,abi] add missing functions to suppression list (#12081)
+* [core,gateway] fix http response (#12095)
+* [ci,mac] build openh264 from master branch (#12104)
+* [client,sdl] lock primary while used (#12103)
+* [client,sdl] show file selection dialog (#12083)
+* Proxy fixes (#12106)
+* [core,freerdp] fix race in freerdp_abort_connect_context (#12107)
+* [server,proxy] make peer_list access thread-safe and fix leaks (#12108)
+* Clang warning fixes (#12109)
+* Tidy nsc (#12110)
+* Clang warn fixes (#12105)
+* Tcp refactor (#12113)
+* [enum,cast] fix implicit enum casts (#12111)
+* [client,common] fix /remoteGuard (#12115)
+* Coverity warning fixes (#12116)
+* [channels,rdpei] properly clean up server channel (#12119)
+* [core,gateway] ignore unknown http headers (#12120)
+* Asan fixes (#12121, #12124, #12124)
+* [crypto,base64] do proper length checks (#12122)
+* [core,gcc] fix integer promotion issue (#12126)
+* [core,orders] fix brush update decoding (#12130)
+* [client,sdl] fix +workarea (#12131)
+* [channels,rdpear] add checks for itemSize (#12127)
+* Fix dead lock in smartcard when using smartcard logon with emulated smartcard (#12132)
+
+For a complete and detailed change log since the last release run:
+git log 3.20.1...3.20.0
+
+# 2025-12-17 Version 3.20.0
+
+## What's Changed
+* Mingw fixes (#12070)
+* [crypto,certificate_data] add some hostname sanitation (#12072)
+* [client,common]: Fix loading of rdpsnd channel (#12074)
+* [client,sdl] set touch and pen hints (#12076)
+
+For a complete and detailed change log since the last release run:
+git log 3.20.0...3.19.1
+
+# 2025-12-12 Version 3.19.1
+
+## What's Changed
+* [core,transport] improve SSL error logging (#12045)
+* [utils,helpers] fix freerdp_settings_get_legacy_config_path (#12052)
+* From stdin and sdl-creds improve (#12050)
+* [crypto,certificate] sanitize hostnames (#12055)
+* [channels,drdynvc] propagate error in dynamic channel (#12057)
+* [CMake] make Mbed-TLS and LibreSSL experimental (#12058)
+* Json fix (#12060)
+* rdpecam: send sample only if it's available (#12061)
+* [channels,rdpecam] allow MJPEG frame skip and direct passthrough (#12059)
+* [winpr,utils] explicit NULL checks in jansson WINPR_JSON_ParseWithLength (#12064)
+* [packaging,flatpak] remove xprop (#12065)
+
+For a complete and detailed change log since the last release run:
+git log 3.19.1...3.19.0
+
+# 2025-12-05 Version 3.19.0
+
+Release addressing a regression (gateway transport failing) and some bugfixes
+
+## What's Changed
+* [ci] add git-archive ignore list (#11994)
+* [client,common] fix retry counter (#11996)
+* [cmake] fix aarch64 neon detection (#11998)
+* Fix response body existence check when using RDP Gateway (#12002)
+* fix line clipping issue (#12005)
+* Clip coord fix (#12006)
+* [core,input] Add debug log to keyboard state sync (#12008)
+* Update command line usage for gateway option (#12011)
+* [codec,ffmpeg] 8.0 dropped AV_PROFILE_AAC_MAIN (#12012)
+* [channels,audin] fix pulse memory leak (#12013)
+* [channels,drive] Small performance improvements in drive channel (#12014)
+* [winpr,utils] fix command line error logging (#12021)
+* [common,test] Adjust AVC and H264 expectations. (#12020)
+* drdynvc: implement compressed packet (#12028)
+* [channels,rdpecam] improve log messages (#12029)
+* Fix remote credential guard channel loading (#12031)
+* Fix inverted ifdef (#12032)
+* [core,nego] disable all enabled modes except the one requested (#12035)
+* rdpear: handle basic NTLM commands and fix server-side (#12039)
+* [smartcardlogon] Fix off-by-one error in `smartcard_hw_enumerateCerts` (#12042)
+* rdpecam: fix camera sample grabbing (#12041)
+
+## New Contributors
+* @kov-serg made their first contribution in (#12005)
+* @alexiri made their first contribution in (#12011)
+* @nteodosio made their first contribution in (#12020)
+
+For a complete and detailed change log since the last release run:
+git log 3.19.0...3.18.0
+
+# 2025-11-12 Version 3.18.0
+
+Minor improvements and bugfix release.
+Some user visible changes:
+* Fix a regression reading passwords from stdin
+* Fix a timer regression (µs instead of ms)
+* Improved multitouch support
+* Fix a bug with PLANAR codec (used with /bpp:32 or sometimes with /gfx)
+* Better error handling for ARM transport (Entra)
+* Fix audio encoder lag (microphone/AAC) with FFMPEG
+* Support for janssen JSON library
+
+## What's Changed
+* [core,arm] extract redirected username (#11873)
+* [winpr,path] fix endianness issues (#11875)
+* [cmake,pkg-config] properly set requires fields (#11876)
+* [codec,planar] make test output verbose (#11877)
+* [codec,planar] more test output (#11878)
+* Planar fix sign (#11880)
+* Entra fixes (#11881, #11882)
+* Warn fixes cast (#11884)
+* wst error handling (#11885)
+* [winpr,json] add jansson support (#11886)
+* [client,sdl] set metadata after command line parsing (#11890)
+* [core,arm] add TARGET_BOOTING error code (#11889)
+* [core] fix const correctness (#11891)
+* [c,standard] use C99 inline (#11879)
+* [winpr,pool] limit minimum threadpool size (#11897)
+* Azure domain (#11892)
+* [core,arm] fix TargetNetAddress size and checks (#11899)
+* [winpr,json] fix a memory leak with jansson (#11901)
+* Jansson fix (#11902)
+* Bitmap fixes and unit tests (#11903)
+* [channels,rdpecam] fix a memory leak (#11907)
+* [common,settings] fix resize of TargetNetAddressess (#11905)
+* Jansson ref count (#11908)
+* [winpr,json] fix WINPR_JSON_AddItemToArray (#11909)
+* [client,common] improve retry handling (#11910)
+* Janssen version limit (#11911)
+* Rdstls error code mapping (#11913)
+* dsp_ffmpeg: fix latency buildup during resampling (#11912)
+* [core,rdstls] improve logging (#11914)
+* [client,common] fix parsing of enablerdsaadauth (#11915)
+* Codec stringify (#11918)
+* [core,tcp] fix a regression (#11919)
+* [core,timer] fix reschedule interval (#11921)
+* [winpr,timezone] update dotnet version for tzextract (#11927)
+* [timezones] Update definitions by @github-actions[bot] in (#11928)
+* [winpr,synch] Yield after a poll timeout in emscripten (#11929)
+* [channels,audin] fix a leak in pulse backend (#11933)
+* [crypto,x509] add missing OpenSSL include for d2i_RSA_PSS_PARAMS (#11942)
+* [client,android] fix wrong type of variable (#11945)
+* Revert smart sizing (#11946)
+* Align width and height for AVC444 decoding to 32 (#11930)
+* [crypto,tls] make cert warning more accurate (#11947)
+* [core,timer] ensure all scheduled timers are handled (#11948)
+* Fix build and run with optional channels (#11941)
+* [channels,rdpei] fix not sending essential touch events (#11955)
+* [CMake] mark WITH_VAAPI experimental (#11956)
+* Config extension (#11961)
+* [winpr,synch] Fix starvation in pollset_poll caused by emscripten_sleep (#11962)
+* [utils] fix from-stdin (#11965)
+* [client,x11] log mouse event types and call stack (#11966)
+* libfreerdp: remove SIGUSR1 and SIGUSR2 from fatal signals (#11968)
+* [input, virtualkey] Add Korean keys in XKB_KEYNAME_TABLE (#11977)
+* [cache,glyph] overallocate to compensate for off by one (#11980)
+* [client,common] improve multitouch mouse emulation (#11970)
+* [core,gateway] improve response cookie handling (#11971)
+* Revert "[core,gateway] improve arm transport" (#11983)
+* Http request improvements (#11984)
+* Log improve (#11985)
+* [client,sdl] sdl2 dialog auth: remove std::move (#11986)
+
+## New Contributors
+* @FriederHannenheim made their first contribution in (#11912)
+* @ploosin made their first contribution in (#11955)
+
+For a complete and detailed change log since the last release run:
+git log 3.18.0...3.17.2
+
+# 2025-09-19 Version 3.17.2
+
+Minor improvements and bugfix release.
+Most notably resource usage (file handles) has been greatly reduced and
+static build pkg-config have been fixed.
+For users of xfreerdp RAILS/RemoteApp mode the switch to DesktopSession
+mode has been fixed (working UAC screen)
+
+## What's Changed
+* Findfirst fix (#11833)
+* [channels,drive] tolerate drive_file_set_disposition_information (#11834)
+* endianness fixes (#11835)
+* fix(winpr): ncrypt_pkcs11: set correct PIV certificate labels (#11837)
+* [cmake] fix versioning regression (#11832)
+* Limit threadpool (#11840)
+* [winpr,path] fix missing length check (#11841)
+* [proxy,channels] better NULL checks (#11842)
+* [codec,yuv] wrap step calculation (#11843)
+* [winpr,sspi] log mechanisms not valid (#11844)
+* settings: remove duplicate setting of GatewayAvdScope (#11845)
+* [client,sdl] improve clipboard logging (#11849)
+* rdpecam: add some new callbacks to the HAL (#11851)
+* [proxy,modules] generate pkg-config files for modules (#11848)
+* [cmake] static build: populate private (#11852)
+* [proxy,modules] extend dynamic module loader (#11854)
+* [winpr,threadpool] default minimum thread count (#11855)
+* [core,tcp] unify setting of TCP_NODELAY (#11856)
+* Planar fix (#11857)
+* Fix quote parsing (#11858)
+* Sdl mod: disable hotkeys (#11862)
+* Aad auth fail (#11863)
+* [clients] add checks from #11804 to all clients (#11865)
+* [client,x11] fix rails/desktop switch (#11866)
+* [client,x11] disable output during rail/desktop switch (#11867)
+* [core,gateway] automatically accept ARM redirection (#11870)
+* Update android deps (#11871)
+
+## New Contributors
+* @TheBestTvarynka made their first contribution in #11837)
+
+For a complete and detailed change log since the last release run:
+git log 3.17.2...3.17.1
+
+# 2025-09-01 Version 3.17.1
+
+Minor improvements and bugfix release.
+
+* most notably a memory leak was addressed
+* fixed header files missing C++ guards
+* xfreerdp as well as the SDL clients now support a system wide configuration file
+* Heimdal kerberos support was improved
+* builds with [MS-RDPEAR] now properly abort at configure if Heimdal is used
+  (this configuration was never supported, so ensure nobody compiles it that way)
+
+## What's Changed
+* [client,sdl] always set sdl->windows_created (#11807)
+* [winpr,synch] increase timeout for TestSynchCritical (#11808)
+* Enable RDPECAM client in flatpak release (#11809)
+* [proxy,channels] refactor dynamic channel (#11812)
+* [core,settings] fix ReceivedCapabilities reset (#11814)
+* Freebsd build fixes (#11815)
+* [client,sdl] disable connection dialog (#11820)
+* audin_oss: do not reset mic volume on capture start (#11822)
+* add-x11-config-file (#11823)
+* [client,sdl] fix global config evaluation (#11825)
+* [sspi,negotiate] improve /auth-pkg-list parsing (#11826)
+* Geometry channel fixes (#)11828)
+* core/redirection: Ensure stream has enough space for all parameters (#11830)
+
+## New Contributors
+* @omatasas made their first contribution in #11787
+* @sharkcz made their first contribution in #11808
+* @cvpcs made their first contribution in #11809
+* @Defenso-QTH made their first contribution in #11822
+
+For a complete and detailed change log since the last release run:
+git log 3.17.1...3.17.0
+
+# 2025-08-22 Version 3.17.0
+
+Bugfix release with (lots) of format string issues along with a few minor parser
+issues fixed. Most notable (user visible) change is full X509 chain support for
+client/server.
+
+## What's Changed
+* [client,sdl2] fix build with webview (#11685)
+* [core,nla] use wcslen for password length (#11687)
+* Clear channel error prior to call channel init event proc (#11688)
+* Warn args (#11689)
+* [client,common] fix -mouse-motion (#11690)
+* [core,proxy] fix IPv4 and IPv6 length (#11692)
+* Regression fix2 (#11696)
+* Log fixes (#11693)
+* [common,settings] fix int casts (#11699)
+* [core,connection] fix log level of several messages (#11697)
+* [client,sdl] print current video driver (#11701)
+* [crypto,tls] print big warning for /cert:ignore (#11704)
+* [client,desktop] fix StartupWMClass setting (#11708)
+* [cmake] unify version creation (#11711)
+* [common,settings] force reallocation on caps copy (#11715)
+* [manpages] Add example of keyboard remapping (#11718)
+* Some fixes in Negotiate and NLA (#11722)
+* [client,x11] fix clipboard issues (#11724)
+* kerberos: do various tries for TGT retrieval in u2u (#11723)
+* Cmdline escape strings (#11735)
+* [winpr,utils] do not log command line arguments (#11736)
+* [api,doc] Add stylesheed for doxygen (#11738)
+* [core,proxy] fix BIO read methods (#11739)
+* [client,common] fix sso_mib_get_access_token return value in error case (#11741)
+* [crypto,tls] do not use context->settings->instance (#11749)
+* winpr: re-introduce the credentials module (#11734)
+* [winpr,timezone] ensure thread-safe initialization (#11754)
+* core/redirection: Ensure stream has enough space for the certificate (#11762)
+* [client,common] do not log success (#11766)
+* Clean up bugs exposed on systems with high core counts (#11761)
+* [cmake] add installWithRPATH (#11747)
+* [clang-tidy] fix various warnings (#11769)
+* Wlog improve type checks (#11774)
+* [client,common] fix tenantid command line parsing (#11779)
+* Proxy module static and shared linking support (#11768)
+* LoadLibrary Null fix (#11786)
+* [client,common] add freerdp_client_populate_settings_from_rdp_file_un… (#11780)
+* Fullchain support (#11787)
+* [client,x11] ignore floatbar events (#11771)
+* [winpr,credentials] prefer utf-8 over utf-16-LE #11790
+* [proxy,modules] ignore bitmap-filter skip remaining #11789
+
+## New Contributors
+* @steelman made their first contribution in #11718
+* @pvachon made their first contribution in #11761
+
+For a complete and detailed change log since the last release run:
+git log 3.17.0...3.16.0
+
+# 2025-06-16 Version 3.16.0
+
+Bugfix release with (again) much improved SDL3 and X11 client
+
+## What's Changed
+* Lots of improvements for the SDL3 client (#11502,#11504,#11516,#11546,#11552,
+  #11553,#11556,#11560,#11568,#11587,#11613,#11643,#11635,#11648,#11653,#11654,
+  #11661)
+* Various X11 client improvements (#11619,#11612,#11620,#11624,#11625,#11660)
+* Various Ci build fixes (#11543,#11554,#11570,#11571,#11575,#11577,#11579,
+  #11580,#11581,#11582,#11583,#11584,#11585,#11586)
+* [utils,smartcard] Better logging and handling of output buffer too small
+  (#11503,#11565,#11636)
+* Add a timer implementation (#11578,#11592,#11615)
+* Various bugfixed for drive channel (#11569,#11601,#11637,#11647,#11659)
+* add login through MS identity broker via sso-mib interface (#11600,#11608)
+* Update flatpak build script in repo (#11609,#11610,#11621,#11670)
+* Various AAD/Azure/Entra improvements (#11606,#11607,#11371,#11518)
+* YUV420 primitives fixes (#11673,#11539)
+* GCC Fixes (#11538)
+* [core,settings] fix freerdp_device_collection_add (#11533)
+* [core,proxy] detect address type (#11534)
+* [core,test] refactor TestSettings (#11558)
+* [core,test] improve settings test log (#11559)
+* [core,activation] skip sending PDU_TYPE_DEACTIVATE_ALL (#11603)
+* [core,transport] only free userContext if userContextSize > 0 (#11642)
+* [core,info] Allow INFO_HIDEF_RAIL_SUPPORTED with RDP version RDP_VERS… (#11652)
+* [core,gcc] use dynamic logger from rdpMcs (#11669)
+* [core,settings] default MonitorIds size to MonitorDefArray size (#11671)
+* Rdp security fixes (#11506)
+* rdpei/server: Fix incorrect PDU length read (#11510)
+* [winpr] Put '\0' when converting empty string to wstr (#11511)
+* [common,settings] new settings (de)serialization API (#11508)
+* [cache,glyph] fix GLYPH_FRAGMENT_USE (#11517)
+* [winpr,sysinfo] use a single clock to provide System and Local time (#11520)
+* [common,settings] fix add_string_or_null (#11522)
+* Compiler warning fixes (#11523)
+* fix [resources]: remove MimeType from desktop file (#11525)
+* gcc: fix server-side connection with multiple monitor (#11527)
+* [rdpsnd/client] add parameters to pulse snd device plugin (#11530)
+* [crypto,key] do not deprecate new_from* (#11535)
+* [winpr,file] Fix assert fail always when removing flags (#11540)
+* FF_PROFILE Depreciation (#11542)
+* [cmake] Fix finding ffmpeg under nonstandard prefixes (#11548)
+* [client,android] update (#11555)
+* Support 'Restrict Credential Delegation' mode (#11547)
+* Support NLA in shadow server when running behind a Hyper-V proxy (#11549)
+* [winpr,file] Add implementation of FileFlushFileBuffers (#11566)
+* [winpr,file] add TestFileWriteFile testcase (#11567)
+* [channels,rdpdr] expose device add/remove for clients (#11564)
+* Deb & RPM update (#11572)
+* Transport fix (#11573)
+* [winpr,sspi] add kerberos string len checks (#11590)
+* [winpr,sspi] assert kerberos principal (#11591)
+* [channels,video] fix NULL dereference (#11597)
+* Reconnect strict (#11599)
+* [rdpdr,hotplug] fix passing of device::Id back to caller (#11617)
+* [client,common] lock clipboard on update (#11618)
+* [client,cliprdr] refactor file clipboard (#11627)
+* [winpr,wtypes] align BOOL typedef with objc.h header (#11632)
+* [stream] reset pool array size after clearing (#11631)
+* fix compile errors: xfc not defined even if with WITH_XCURSOR=ON (#11629)
+* [utils,helpers] add missing WINPR_ATTR_MALLOC (#11633)
+* JSON configuration helpers (#11634)
+* [client,common] (re)initialize fuse root in cliprdr_file_context_init (#11646)
+* [WaitForXXObject] use infinite timeout where possible (#11651)
+* [channels,printer] fix missing include (#11663)
+* [winpr,file] fix definition of winpr_CreateFile (#11664)
+
+## New Contributors
+* @lazy5f made their first contribution in #11511
+* @EndlessEden made their first contribution in #11542
+* @thestr4ng3r made their first contribution in #11548
+* @ljaeh0121 made their first contribution in #11566
+* @rupran made their first contribution in #11600
+* @asterwyx made their first contribution in #11631
+* @ligangcc made their first contribution in #11629
+* @motor-dev made their first contribution in #11635
+
+For a complete and detailed change log since the last release run:
+git log 3.16.0...3.15.0
+
+# 2025-04-14 Version 3.15.0
+
+Bugfix release with much improved SDL3 client and relative mouse input support
+
+## What's Changed
+* [client,sdl] fix crash on suppress output (#11421)
+* Refactor checks (#11425)
+* Clean warn, sdl dynamic sizes (#11426)
+* [channels,remdesk] fix possible memory leak (#11428)
+* [client,x11] map exit code success (#11432)
+* nla: send user and domain hints with smartcard logon (#11435)
+* [client,windows] ignore clipboard failures (#11436)
+* Hidef rail checks and deprecation fixes (#11439)
+* Fix child session hanging issue. (#11442)
+* [channels,rdpdr] relax state checks for PAKID_CORE_CLIENTID_CONFIRM (#11433)
+* Standard rdp security network issues (#11446)
+* Various fixes related to smartcard logon server-side (#11443)
+* [core,rdp] fix check for SEC_FLAGSHI_VALID (#11449)
+* [scripts,mac] limit make -j to number of processors (#11450)
+* [readme] deprecate xmpp bridge (#11451)
+* [readme] explicitly link FAQ (#11452)
+* [readme] put links on one line each (#11453)
+* [core,tls] enable SNI when building with libreSSL (#11454)
+* [channels,client] log server format list (#11455)
+* [client,mac] prefer unicode from clipboard (#11456)
+* [cmake] drop legacy and unused cmake_policy (#11457)
+* Sdl suppress output fix (#11458)
+* [client,sdl] unify all gdi_suppress_output calls (#11460)
+* [client,sdl] fix multimonitor fullscreen (#11462)
+* [client,sdl] fix unused result warning (#11463)
+* [client,sdl] quit on window close (#11464)
+* [core,gateway] log tsg timeout (#11465)
+* [core,settings] enforce OrderSupportFlags (#11468)
+* [core,caps] fix rdp_apply_order_capability_set (#11469)
+* Sdl elminiate sdl and rdp thread dependency (#11473)
+* [client,sdl] wrap connection dialog (#11475)
+* [core,proxy] align no_proxy to curl (#11479)
+* [winpr,smartcard] fix SCARD_ATTR_VENDOR_NAME length (#11481)
+* [core,gateway] fix string reading for TSG (#11485)
+* [rdpei/server] fix build and channel init (#11484)
+* [client,sdl] refactor display update (#11472)
+* [client,sdl] fix clipboard updates (#11486)
+* [client,sdl] fix orientation update (#11487)
+* Sample fix (#11488)
+* [timezones] Update definitions (#)11489)
+* Rel mouse change (#11384)
+* [winpr,utils] ignore _Unwind_Backtrace return (#11491)
+* Warn log (#11493)
+* [cmake] simplify v4l detection (#11495)
+* [client,sdl] use a GUID to identify the clipboard (#11496)
+* [utils,smartcard] assert and improve log (#11498)
+* rdpei/server: Add optional threaded handling of messages (#11499)
+
+## New Contributors
+* @poasungoh made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11442
+* @TolchiIsland made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11446
+* @mnauw made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11484
+
+For a complete and detailed change log since the last release run:
+git log 3.15.0...3.14.1
+
+
+# 2025-03-24 Version 3.14.1
+
+Bugfix and papercut release.
+Some small improvements in RDP file parsing, logging,
+clipboard support, gateway detection and many more.
+
+## What's Changed
+* [core,gateway] add rts parser checks (#11340)
+* [core,gateway] additional RTS checks (#11341)
+* [ci,workflow] use mk-build-deps to install deps (#11343)
+* [ci,workflow] add equivs dependency (#11344)
+* [clipboard] improve logging, fix image conversions (#11342)
+* core: Set instance pointer after channel reload (#11346)
+* [ci,alt-arch] request sudo for package installation (#11345, #11347, #11348,
+  #11349, #11350, #11351, #11352, #11353, #11355)
+* [channels,printer] Ignore printer settings (#11354)
+* [ci,alt-arch] fix gsm, simplify config (#11356)
+* [primitives] fix detection and refactor yuv420 to RGB (#11358)
+* [client,sdl3] fix clipboard format detection (#11366)
+* [cmake] add explicit instructions to turn off unmaintained modules (#11362)
+* client: Fix population of string settings in rdp file (#11370)
+* [client,common] fix rdp parser (#11372)
+* [core] use dynamic logger where possible (#11360)
+* [client,x11] add <ctrl>+<alt>+d shortcut, log detected shortcuts (#11363)
+* [client] add image as HTML clipboard format, fix bitmap conversions (#11369)
+* [core,gateway] improve RPC fallback detection and logging (#11375)
+* [core,transport] fix transport statistics (#11377)
+* code cleanups and abi-checker improvements (#11378, #11381)
+* refactor GetStdHandle (use global destructor), fix possible rdp2tcp leaks (#11383, #11386)
+* fix a few missing checks in xfreerdp and keyboard remapping for sdl-freerdp (#11406)
+* fix deprecation warnings on macos (#11390)
+* fix capslock and hotkey keyboard state sync (#11410, #11415)
+
+For a complete and detailed change log since the last release run:
+git log 3.14.1...3.14.0
+
+
+# 2025-03-13 Version 3.14.0
+
+Bugfix and cleanup release.
+Due to some new API functions the minor version has been increased.
+
+So, what has been changed:
+* Fix spelling of 'dont' (#11297)
+* missing ConnectFlags variable in license_read_platform_challenge_packet breaks in WITH_DEBUG_LICENSE builds (#11301)
+* [locale] add freerdp_detect_keyboard_layout_from_locale (#11298)
+* Invert 3x deprecated (#11296)
+* [primitives,copy] remove alignment check (#11302)
+* sdl-common (#11303)
+* [client,sdl3] fix bitmap clipboard copy (#11304)
+* [channels,ubdrc] add some more failure logging (#11306)
+* [client] Fix writing incorrect type for integer values in RDP file (#11307)
+* Urbdrc cleanups (#11308)
+* [winpr,nt] Fix incorrect name in FILE_INFORMATION_CLASS (#11311)
+* [core,gateway] improve rts_read_auth_verifier_with_stub (#11314)
+* [cmake] Fix DLL install directory (#11316)
+* Enable dynamic resolution setting (#11317)
+* [client,x11] add apple keyboard fallback (#11315)
+* [client,sdl] #include <SDL3/SDL_main.h> (#11318)
+* [windows] fix deprecation and int warnings (#11319)
+* Mingw build improvements (#11321)
+* Urbdrc leak fix (#11322)
+* [warnings] fixed integer casts (#11325)
+* [core,gateway] unify TSG_PACKET_MSG_RESPONSE (#11327)
+* [channels,drive] Prefer using handle from IRP_CREATE when possible (#11338)
+
+New Contributors
+* @eduar-hte made their first contribution in (#11301)
+
+For a complete and detailed change log since the last release run:
+git log 3.14.0...3.13.0
+
+# 2025-03-06 Version 3.13.0
+
+Another bugfix and cleanup release.
+Due to some new functions and fields being introduced the minor version
+has been increased.
+
+New for application developers:
+A new CMake Variable WITH_FREERDP_3x_DEPRECATED (ON by default) allows
+disabling all symbols that have been marked deprecated during the 3.x
+release cycle. Such a build can be used to test compatibility with future
+versions that might drop these symbols entirely.
+
+So, what has been done:
+* Friends of old hardware rejoice, serial port redirection got an update
+  (not kidding you)
+* Android builds have been updated to be usable again
+* Mingw builds now periodically do a shared and static build
+* Fixed some bugs and regressions along the way and improved test coverage as
+  well
+
+Noteworthy Changes:
+* Cmake fix symbol visibility (#11185)
+* Sanity checks (#11186)
+* [locale,keyboard] fix loading from file (#11188)
+* [client,x11] only filter input on floatbar lock (#11190)
+* [core,gcc] improve consistency checks (#11191)
+* [channel,urbdrc] fix urbdrc_udevman_register_devices (#11194)
+* [client,sdl] fix keyboard grab (#11195)
+* Nightly deb sdl3 optional (#11197)
+* Alt arch update (#11199)
+* [ci,alt-arch] split config (#11200)
+* [core,freerdp] send MCS Disconnect Provider Ultimatum PDU (#11202)
+* [macro] fix use of WINPR_DEPRECATED (#11203)
+* [channel,rdpecam] UVC H.264 fix for c922 camera (#11207)
+* [channel,rdpdr] support general caps V1 (#11209)
+* [cmake] fix missing include (#11213)
+* [client,sdl] mark SDL2 as deprecated. (#11223)
+* Cursor test and fixes (#11220)
+* [build,android] add workaround for OpenSSL tag naming (#11224)
+* [core,credssp_auth] Fix faulty string length check in `credssp_auth_client_init_cred_attributes` (#11226)
+* [codec,test] fix type mismatch (#11229)
+* [codec,dsp] ignore encoder errors (#11225)
+* Android fixes (#11230)
+* [channels,rdpsnd] fix android build warnings (#11232)
+* [client,common] improve parsing of TLS options (#11235)
+* [client,x11] reduce verbosity of actionscript log (#11238)
+* CMake: generate a .gitignore file for the build directory (#11241)
+* [winpr,wlog] simplify WLog_* macros (#11237)
+* [client,cmdline] fix port parsing for gateway (#11243)
+* Mingw update (#11242, #11244, #11245)
+* [ci,abi] suppress gdi_graphics_pipeline_init_ex (#11246)
+* [cmake] Enable CMAKE_EXPORT_COMPILE_COMMANDS (#11252)
+* [packaging,flatpak] remove .orig file (#11254)
+* [utils,smartcard] check output buffer length (#11255)
+* [client,x11] improve action script logging (#11257)
+* [warnings] fix -Wunused-macro (#11258)
+* [warnings] fix -Wunused-function (#11260)
+* Redirection && StreamPool usage fixes (#11262)
+* Serial term fixes (#11253)
+* [server,shadow] multi rect BitmapUpdate support (#11268)
+* Redirection && StreamPool usage fixes (#11262)
+* [warnings] eliminate dead code (#11275)
+* Implement stuff (#11277)
+* [dead code] remove some unused code (#11280)
+* [channels,rdpecam] fix libusb include path (#11282)
+* Rdpear test fix (#11284)
+* client: Move buffer pointer after writing RDP settings (#11287)
+* [warnings] eliminate dead code (#11283)
+* [client,x11] implement keyboard mapping (#11273)
+* Serial term fixes (#11253)
+* [core,gateway] add tsg checks (#11288)
+
+New Contributors:
+* @yegorich made their first contribution in (#11241)
+* @THS-on made their first contribution in (#11243)
+
+For a complete and detailed change log since the last release run:
+git log 3.13.0...3.12.0
+
+# 2025-02-14 Version 3.12.0
+
+A bugfix and cleanup release.
+Due to a new function and a new macro the minor version was incremented.
+* Multimonitor backward compatibility fixes
+* Smartcard compatibility
+* Improve the [MS-RDPECAM] support
+* Improve smartcard redirection support
+* Refactor SSE optimizations: Split headers, unify load/store, require SSE3 for
+  all optimized functions
+* Refactors the CMake build to better support configuration based builders
+* Fix a few regressions from last release (USB redirection and graphical glitches)
+
+Noteworthy Changes:
+* Fix all unused warnings (#11167)
+* [common,settings] fix backward compatibility for LocalMonitorOffset (#11175)
+* Warning cleanups (#11172, #11173, #11167)
+* CMake configurable C/C++ standard, WINPR_ATTR_UNUSED (#11171)
+* [utils,smartcard] fix return checks for SCardListReaders (#11170)
+* [primitives,sse] split headers (#11163)
+* X11 keymap reload fix (#11162)
+* [core,freerdp] New API freerdp_presist_credentials (#/11160)
+* [client,common] Avoid use of reserved types by @fossdd (#11144)
+* [core,orders] fix update_read_delta by @akallabeth (#11145)
+* [build,android] only enable required codecs for ffmpeg by @akallabeth (#11147)
+* [iOS] Update OpenSSL library location and build script by @beersheba (#11148)
+* Warn fixes, code cleanups by @akallabeth (#11140)
+* [server] fix compilation errors after adding NONAMELESSUNION. by @llyzs (#11149)
+* [channel,rdpecam] support Logitech UVC H.264 stream mux payload by @oleg0421 (#11132)
+* [winpr,sysinfo] limit GetComputerNameA to 31 chars by @akallabeth (#11150)
+* Warn fixes42 by @akallabeth (#11151)
+* [utils,smartcard] return proper list for smartcard listing by @akallabeth (#11152)
+* [channel,rdpecam] uvc_h264 xu_descriptor pointer fix by @oleg0421 (#11154)
+* [channel,urbdrc] fix libusb return code checks by @akallabeth (#11156)
+* Function size refactor by @akallabeth (#11157)
+* Cmake multiconfig2 by @akallabeth (#10853)
+
+New Contributors:
+* @fossdd made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11144
+
+For a complete and detailed change log since the last release run:
+git log 3.12.0...3.11.1
+
+# 2025-02-07 Version 3.11.1
+
+A bugfix release addressing two regressions reported against 3.11.0
+
+Noteworthy changes:
+ * Fix a segfault when passing /pth (#11138)
+ * Fix a regression in planar codec (#11136)
+
+For a complete and detailed change log since the last release run:
+git log 3.11.1...3.11.0
+
+# 2025-02-06 Version 3.11.0
+
+A new release with bugfixes and code cleanups as well as a few nifty little
+features that will improve your meetings.
+
+Noteworthy changes:
+ * Updated android client to more recent gradle (#11105, #11110)
+ * Fix cmake clean target (#109
+ * SDL3 bugfixes and API updates (#11092, #11093, #11128)
+ * Fix keyboard mapping, add working japanese and korean types, deprecate
+   obsolete functions (#10989, #11035, #11011, #11074, #11037)
+ * Fix timezone mapping and iteration (#11077, #11079, #11080, #11083)
+ * Fix YUV reverse filter for AVC444 modes (#11045, #11063, #11066, #11081, #11086,
+   #11087)
+ * Fix H.264 encoder wrapper issues (#11117, #11121, #11078)
+ * MS-RDPECAM: Support for H.264 encoding with VA-API (#10887)
+ * Fix various CMake, build script and github workflow issues (#10992, #10996,
+   #11020, #11031, #11030, #11062, #11064, #11069, #11073, #11123, #11109,
+   #11120, #11053, #11089)
+ * [codec,planar] fix decoder regression (#11033)
+ * [client,cmdline] fix vmconnect checks (#11051)
+ * Fix multi-monitor related checks (#11095)
+ * Fix various compiler and clang-tidy warnings (#10953, #11003, #11004,
+   #11007, #11016, #11018, #11019, #11021, #11017, #11000, #11023, #11024,
+   #11026, #11002, #11028, #11001, #11029, #10999, #11006, #11034, #10998,
+   #11044, #11050, #11052, #11057, #11059, #11065, #11067, #11068, #11060,
+   #11071, #11085, #11088, #11099, #11102, #11108, #11124, #11126, #11129,
+   #11130)
+
+New Contributors
+ * @chewi made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11004
+ * @gpotter2 made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11016
+ * @vmpn made their first contribution in https://github.com/FreeRDP/FreeRDP/pull/11092
+
+For a complete and detailed change log since the last release run:
+git log 3.11.0...3.10.3
+
+
+# 2024-12-17 Version 3.10.3
+
+Follow up release to 3.10.2, as we've discovered a few bugs after release.
+
+Noteworthy changes:
+ * Fix usage of GetComputerNameExA (#10988)
+ * Fix cmake clean target (#10990)
+
+For a complete and detailed change log since the last release run:
+git log 3.10.3...3.10.2
+
+# 2024-12-16 Version 3.10.2
+
+Follow up release to 3.10.1, as we've discovered a few bugs during release
+tests.
+
+Noteworthy changes:
+ * Fix initializing ComputerName setting (#10985)
+ * Fix some warnings and possible leaks (#10985)
+
+For a complete and detailed change log since the last release run:
+git log 3.10.2...3.10.1
+
+# 2024-12-16 Version 3.10.1
+
+We're happy to present a new release of FreeRDP.
+This release contains a few fixes for bugs revealed by checks introduced
+with 3.10.0
+
+Noteworthy Changes:
+ * Add FreeBSD as architecture build to our ci (#10980 and others)
+ * Fix empty include directory creation (#10981)
+ * fix SIMD detection (#10968)
+ * improve settings unit test coverage (#10966)
+ * fix sending server redirection PDU (#10963)
+ * fix return and use of GetComputerNameA (#10962)
+
+For a complete and detailed change log since the last release run:
+git log 3.10.1...3.10.0
+
+# 2024-12-12 Version 3.10.0
+
+We're happy to present a new release of FreeRDP.
+This one contains some more code cleanups (we've addressed lots of clang-tidy
+warnings) as well as some highly anticipated new features and bugfixes.
+
+So, what is new:
+* Enforce use of a supported build type (#10777)
+* Enable FDK-AAC support for nightly packages (#10875, #10781)
+* Better AAD/AVD support (#10796)
+* Build system updates (#10844)
+* Enforce spell checking (#10881)
+* Split unit tests so a subset can be run during package build (#10776)
+* We're shipping a .desktop file now (#10465)
+* Build scripts for nightly packages (#10835, #10783)
+
+Noteworthy changes:
+* Fix wStream API bugs (#10885)
+* Autoreconnect fixes (#10915)
+* Fix monitor layout checks (#10905)
+* Enforce code formatting for CMake files (#10895)
+* Enable SIMD optimizations by default (#10894)
+* WinPR types not based on stdint.h et al (#10754)
+* Improve code assertions (#10768)
+* Code cleanups (#10763, #10914)
+
+For a complete and detailed change log since the last release run:
+git log 3.10.0...3.9.0
+
+
+# 2024-10-21 Version 3.9.0
+
+We're proud to present the newest release of FreeRDP.
+This one brings some major code cleanup (we've addressed lots of clang-tidy
+warnings) as well as some highly anticipated new features.
+We also did update the API documentation quite a bit (still incomplete though,
+help always welcome ;))
+
+So, what is new:
+* Support for RDPEAR (remote credential guard) /remoteGuard option for non windows clients
+* Global configuration file support, allowing to configure certificate
+  accept/ignore/... default settings for all users
+* Simplified manpage generation, eliminates docbook and xmlto dependencies
+  speeding up builds
+* New API for client channels to run tasks on RDP thread
+* New extended transport layer API
+* RDPECAM MJPEG support	
+* the first updates of timezone definitions from our automated ci
+
+Noteworthy changes:
+* Fix bugs in SSE4.1/AVX2 image copy (#10720)
+* Add warnings for invalid monitor settings during connect (#10672)
+* Fix ALSA microphone support (#10664)
+* Fix modal windows in RAILS mode (#10629)
+* Update experimental SDL3 client (SDL3 API should now have been stabilized,
+  various pull requests)
+* Fix keyboard layouts, the external JSON did miss a few (#10639)
+
+For a complete and detailed change log since the last release run:
+git log 3.9.0...3.8.0
+
+# 2024-08-30 Version 3.8.0
+
+This is a bugfix release. Due to additional exports required by a bugfix the minor version was incremented
+
+Noteworthy changes:
+* Reduce number of warnings on CI build (make dependency includes SYSTEM) (#10509)
+* Fix possible crashes with P11 certificate parsing (#10462, #10463)
+* Various clipboard related fixes (#10472, #10476, #10477, #10480, #10484)
+* Fix a race condition on DesktopResize (xfreerdp) (#10488)
+* Improve certificate warnings (#10489)
+* Try all possible resolved IP addresses for a DNS name on connect (#10491)
+* Fix an issue with GFX SolidFill alpha data (#10498)
+* Various fixes for SDL clients (#10504, #10492, #10471)
+* Fix serial and parallel redirection crashes (#10510)
+* Fix android build issues with NDK 27 (#10529)
+* Improve performance of some WinPR primitives (#10528)
+* Fix an issue with autoreconnect (#10523)
+* Support ssh-askpass like password reading (#10516)
+* Lots of code cleanups to reduce clang-tidy warnings (#10531, #10525, #10521, #10520, #10519, #10518)
+
+For a complete and detailed change log since the last release run:
+git log 3.8.0...3.7.0
+
+# 2024-08-08 Version 3.7.0
+
+This release has accumulated quite a number of changes. Along bugfixes for 3.6.3 it also
+contains a number of improvements for distributors:
+
+* Support for FDK-AAC for sound and microphone redirection (activate with -DWITH_FDK_AAC=ON build option)
+  This allows enabling the AAC compression that do not ship faad2 and/or faac
+* Support keyboard layouts as JSON resources (activate with -DWITH_KEYBOARD_LAYOUT_FROM_FILE=ON build option,
+  also requires JSON support)
+  This allows editing keyboard layouts for existing releases should the need arise
+* Support timezones as JSON resources (activate with -DWITH_TIMEZONE_FROM_FILE=ON -DWITH_TIMEZONE_COMPILED=OFF build options,
+  also requires JSON support)
+  Allows reading the mapping between IANA and windows timezones from a JSON file, allowing easier updates without recompile
+* Improve shadow server compatibility with windows 11 24H2 RDP client
+  Windows 7 RFX and bitmap updates with multiple rectangles have been deactivated, so adjust shadow to not send such.
+
+Noteworthy changes:
+* Fix ActionScript parameter (#10423)
+* Support keyboard layouts as JSON resource (#10394)
+* Support timezones as JSON resource and command line argument (#10428 #10393 #10391)
+* Deactivate AsyncUpdate (#10402)
+* Compatibility fixes for shadow with windows 11 24H2 (#10455 #10422 #10420 #10416)
+* Fix SDL client autoreconnect (#10390)
+* Fix xfreerdp clipboard locking (#10385)
+* Improve logging (#10426 #10441)
+* Improve warnings and code checks (#10381 #10401 #10403 #10405 #10406 #10410 #10421 #10454)
+* Support FDK-AAC (#10372)
+* Fix drive redirection state transitions (#10367 #10374)
+* Support mth:// routing token (#10366)
+* Ignore unsupported SetThreadPriority (#10363)
+* Fix reported documentation and code typos (#10365 #10368 #10370 #10369 #10431 #10446)
+
+For a complete and detailed change log since the last release run:
+git log 3.7.0...3.6.3
+
+# 2024-07-08 Version 3.6.3
+
+Bugfix release for 3.6.2 issues reported
+
+Noteworthy changes:
+* fix a graphics regression (#10352)
+* workaround for a protocol bug of older FreeRDP based servers (#10358)
+* fix possible NULL dereference in command line parser (#10348)
+* fix intrinsics detection (#10346, #10350)
+
+For a complete and detailed change log since the last release run:
+git log 3.6.3...3.6.2
+
+
+# 2024-07-04 Version 3.6.2
+
+Bugfix release for 3.6.1 issues detected during release tests
+
+Noteworthy changes:
+* Fix xfreerdp and sdl-freerdp manpage names (accidentally changed name)
+* Fix crash of wfreerdp
+
+For a complete and detailed change log since the last release run:
+git log 3.6.2...3.6.1
+
+
+# 2024-07-04 Version 3.6.1
+
+Bugfix release for 3.6.0
+
+Noteworthy changes:
+* Fix missing dependency for ci abi-checker
+* Fix build WITH_SSE2/WITH_NEON: only enable support if the compiler
+  also defines symbols that suggest support.
+* Fix incomplete changelog for 3.6.0:
+ * Improved image copy (#10208)
+ * Experimental [MS-RDPECAM] support by @oleg0421 (#10258)
+ * Improved primitives (#10304)
+ * Connection timeout for HTTP gateway transport (#10288)
+
+For a complete and detailed change log since the last release run:
+git log 3.6.1...3.6.0
+
+
+# 2024-07-03 Version 3.6.0
+
+With this release we did improve decoder speed so you should notice a significant
+speed improvement with progressive and other gfx codecs.
+We've also eliminated a couple of issues along the way, so an update
+is highly recommended.
+
+Noteworthy changes:
+* Improved command line failure logging (#10333)
+* p11-kit support (#10081)
+* json-c support (#10183)
+* (experimental) SDL3 port SDL client (#10195)
+* New option '/gfx:frame-ack:off' for connection delay testing (#10214)
+* improved decoder speed (#10222, #10235)
+* xfreerdp floatbar hide bug (#10237)
+* winpr-makecert month bug (#10236)
+* kerberos kdcUrl check fixes (#10238)
+* timezone updates (#10120, #10144, #10170)
+* fixed a capability protocol violation bug (#10132)
+* fix SDL client dialog bug terminating on credential dialog (#10134)
+* some more oss-fuzz issues (#10126, #10141, #10148, #10161, #10239)
+* rails popup window fixes (#10160)
+
+
+For a complete and detailed change log since the last release run:
+git log 3.6.0...3.5.1
+
+
+# 2024-04-22 Version 3.5.1
+
+This release eliminates a bunch of issues detected during oss-fuzz runs.
+The test coverage was increased and detected issues eliminates, so an update
+is highly recommended.
+
+Noteworthy changes:
+* Lots of fixes for oss-fuzz reports
+* Timezone detection fixes (#10106)
+* SDL key remapping support (#10103)
+* Improved help (#10099)
+* FreeBSD epoll detection fix (#10097)
+
+For a complete and detailed change log since the last release run:
+git log 3.5.1...3.5.0
+
+# 2024-04-16 Version 3.5.0
+
+This release focus is on squashing bugs.
+The improved test coverage and ci builds revealed a number of previously
+unnoticed issues we have addressed and we also got a report from
+Evgeny Legerov of Kaspersky Lab identifying a number of out of bound reads
+in decoder components and one very nasty out of bound write.
+
+CVE:
+CVE-2024-32041 [Low[ OutOfBound Read in zgfx_decompress_segment
+CVE-2024-32039 [Moderate] Integer overflow & OutOfBound Write in clear_decompress_residual_data
+CVE-2024-32040 [Low] integer underflow in nsc_rle_decode
+CVE-2024-32458 [Low] OutOfBound Read in planar_skip_plane_rle
+CVE-2024-32459 [Low] OutOfBound Read in ncrush_decompress
+CVE-2024-32460 [Low] OutOfBound Read in interleaved_decompress
+
+Noteworthy changes:
+* location channel support #9981, #9984, #10065
+* bugfixes for report from Evgeny Legerov of Kaspersky Lab #10077
+* fuzzer tests from Evgeny Legerov of Kaspersky Lab #10078
+* bugfixes for coverty scanner #10066, #10068,  #10069, #10070, #10075
+* clipboard and generic locking fixes #10076
+* split autoreconnect support from enabling it #10063
+* various nightly and workflow fixes #10064, #10058, #10062
+* always set wm-class to app_id #10051
+* refactored and simplified CMake #10046, #10047
+* fix relative mouse event sending #10010
+* improve and unify check for APIs used (POSIX, win32, mac, ...) #9995
+* fix termination for gateway connections #9985
+* fix drivestoredirect RDP file setting, ignore invalid #9989
+* drop IPP support #10038
+
+For a complete and detailed change log since the last release run:
+git log 3.5.0...3.4.0
+
+# 2024-03-14 Version 3.4.0
+
+This release concentrates on improving test coverage and ci builds.
+Some usability issues and inconvenient API functions were fixed on the way.
+
+New features have been introduced (stub for location channel)
+
+Noteworthy changes:
+* fix a bug in RAIL mode not activating window focus (#9973)
+* improve logging (#9969, #9943)
+* OpenSSL <= 1.1.1 build fixes (#9897)
+* improved help (#9899, #9905)
+* improved MINGW support (#9914, #9915, #9919, #9964, #9965, #9920)
+* fix right control ungrab for xfreerdp (#9960)
+* fix RPATH option settings (#9963)
+* fix SDL client screen updates (#9962, #9954)
+* fix issues with childSession under windows (#9961, #9956, #9922)
+* fix xfreerdp crash with +auth-only (#9947)
+* fix windows printer channel (#9934)
+* add support to enforce gateway policy (#9942)
+* improve big endian support (#9927)
+* ignore empty proxy environment variables (#9929)
+* improve quoting support for command line (#9912)
+
+For a complete and detailed change log since the last release run:
+git log 3.4.0...3.3.0
+
+
+# 2024-02-22 Version 3.3.0
+
+This release concentrates on code cleanup and overall quality improvements.
+Some usability issues and inconvenient API functions were fixed on the way.
+
+New features have been introduced (better image clipboard) but that stays
+deactivated by default as we´re in a stable series.
+
+Check the new CMake options:
+* PLUGIN_ABS_PATHS_DEFAULT disables loading of external channels from all
+  but a specified absolute plugin directory defined by FREERDP_PLUGIN_PATH
+* WINPR_UTILS_IMAGE_PNG enables PNG support with libpng in winpr image/clipboard
+* WITH_LODEPNG enables PNG support with lodepng library in winpr image/clipboard
+* WINPR_UTILS_IMAGE_WEBP enables WEBP support in winpr image/clipboard
+* WINPR_UTILS_IMAGE_JPEG enables JPEG support in winpr image/clipboard
+* USE_EXECINFO enables or disables backtrace support with execinfo
+* WITH_WEBVIEW now defaults to OFF on windows, apple and android (not implemented)
+
+Noteworthy changes:
+* Improved image clipboard (xfreerdp, wlfreerdp) (#9873, #9826)
+* Improved SDL client (#9875, #9887, #9883, #9878, #9792)
+* Allow plugin loader to only use absolute paths (#9809)
+* Improved TLS channel binding (#9838)
+* Add GCC/clang attribute malloc wrapper WINPR_ATTR_MALLOC (#9863)
+* Major clang-tidy code cleanups and bugfixes (#9799, #9834)
+* Provide some defaults for wObject functions (#9799)
+* Fix a bug in shadow with GFX breaking mstsc (#9818)
+* Improved manpages and help (#9813, #9804)
+* Blocking mode via transport IO interface (#9793)
+
+For a complete and detailed change log since the last release run:
+git log 3.3.0...3.2.0
+
+# 2024-01-19 Version 3.2.0
+
+This release mostly addresses issues reported since the last release.
+Fixing some usablity and build issues as well as adding API functions
+that are needed from external projects
+
+Noteworthy changes:
+* Fix proxy module load check (#9777)
+* Improve kerberos error logging (#9771)
+* Improve mac client keyboard handling (#9767)
+* Add option to run client dynamic channel synchronous (#9764)
+* Move huge struct to heap (#9763)
+* Improved failure logging of license module (#9759)
+* Improve server side gfx logging (#9757)
+* Print shadow server help with printf instead of WLog (#9756)
+* Fix SDL client timer initialization (#9754)
+* Fix server peer message parsing (#9751)
+* Enable NEON instructions if __ARM_NEON is defined (#9748)
+* Add new proxy config file option TlsSecLevel (#9741)
+* Improve android and mac os build scripts (#9735)
+* Do not disable wayland support on BSD (#9730)
+* Fix issues with assistance file parsing (#9727, #9728)
+* Keyboard handling fixes for wayland client (#9725)
+* Fix relative pkg-config file paths (#9720)
+* Add new transport IO callback GetPublicKey (#9719)
+* Fix wayland client scaling (#9715)
+
+For a complete and detailed change log since the last release run:
+git log 3.2.0...3.1.0
+
+# 2023-12-22 Version 3.1.0
+
+A new 3.1.0 minor release for the new 3.0.0 series.
+This contains bugfixes, adds (better) support for libressl and mbedtls and
+brings a bunch of improvements for the SDL client.
+
+This comes with a price though, we now (optionally) require SDL_image if you
+want to build the sdl-client
+
+Since there are multiple new features, some new files (man pages) and new
+optional dependencies we´ve directly incremented the minor version.
+
+New CMake options:
+* SDL_USE_COMPILED_RESOURCES (default ON) builds fonts and images into SDL
+  client. Set to OFF to install these resources as files. (was already part of
+  3.0.0, but worth mentioning here)
+* WITH_SDL_IMAGE_DIALOGS (default OFF) Show some nice icons for SDL client
+  connection dialogs. Requires SDL_image for build.
+* WITH_BINARY_VERSIONING (default OFF) Similar as for libraries the binaries,
+  manpages and resource locations created by FreeRDP project are postfixed
+  with the API version. Recommended if packagers want to install the package
+  alongside FreeRDP 2 without conflicts.
+* RDTK_FORCE_STATIC_BUILD (default OFF) Build and link RDTK statically into
+  shadow server. Recommended for packagers as this library is not really used
+  outside of FreeRDP-shadow.
+* UWAC_FORCE_STATIC_BUILD (default OFF) Build and link UWAC statically into
+  wlfreerdp. Recommended for packagers as this library is not really used
+  outside of wlfreerdp.
+
+Noteworthy changes:
+* Fix a nasty bug with relative mouse movement (#9677)
+* LibreSSL support enhancements (#9691, #9670)
+* mbedTLS support enhancements (#9662)
+* Improve building on mac OS (#9641)
+* New and improved manpages (#9690, #9650)
+* Unify CMake common options, add (optional) binary versioning and allow
+  building rdtk and uwac as static dependencies  (#9695)
+* SDL client improvements (#9693, #9657, #9659, #9683, #9680, #9657, #9664,
+  #9656)
+
+For a complete and detailed change log since the last release run:
+git log 3.1.0...3.0.0
+
+# 2023-12-12 Version 3.0.0
+
+Final 3.0.0 release just a little over two weeks after the last 3.0.0-rc0.
+This contains bugfixes, drops some legacy code, implements a small feature
+request and adds some improvements to the build system.
+
+Most notably is the new PreventInSourceBuilds.cmake which does exactly what
+the name implies, it aborts builds where source equals build directory.
+If you can not use out of source tree builds for some reason, you can
+circumvent this measure with the CMake setting -DALLOW_IN_SOURCE_BUILD=ON
+
+Noteworthy changes:
+* add support for AF_VSOCK #9561
+* xfreerdp drop X11 GDI implementation #9492
+* fixed connection freeze with childSession #9594
+* fixed relative mouse input issues #9608
+* fixed issues with drive redirection #9610
+* simplified mac build #9601
+* fixed TSMF to build again #9603
+* fixed command line /gfx parsing bug #9598
+* prevent in source tree build #9550
+* fixed various issues with settings #9595, #9596
+* add E2K cpu support in WinPR #9599
+* fixed wfreerdp DPI settings when used as embedded window #9593
+* android add mouse hover support #9495
+
+For a complete and detailed change log since the last release run:
+git log 3.0.0..3.0.0-rc0
+
+# 2023-11-27 Version 3.0.0-rc0
+
+Nearly 2 months of testing, bugfixing and API refinements later we´re
+happy to announce the first release candidate for FreeRDP 3.0
+The API should now be considered stable and only minor changes (if at all)
+will happen from this point on, so every project using FreeRDP can check
+compatibility with upcoming 3.0
+
+Noteworthy changes:
+* Updated rdpSettings API #9465:
+  * getter/setter now use enum types for keys (generates compiler warnings for mismatch)
+  * Refined functions (added missing, dropped problematic ones)
+  * prepared opaque settings (direct struct access now deprecated)
+* Server side [MS-RDPEL] channel #9471
+* Relative mouse movement support #9459
+* relocatable pkg-config files (enable with -DPKG_CONFIG_RELOCATABLE=ON, #9453)
+* cliprdr dropped support for fuse2 (#9453)
+* added support for uriparser for clipboard file:// parsing (#9455)
+* aFreeRDP translation for traditional chinese (zh-rTW) added (#9450)
+* fixed sdl-freerdp crash on credential dialog (#9455)
+* fixed sdl-freerdp alt+tab in fullscreen (#9442)
+* added /connect-child-session option (WIN32 only, #9427)
+* fix rfx-image codec setup (#9425)
+* added missing cmake configuration for winpr-tools (#9453)
+* cleaned up cmake configuration files, dropped no longer required ones (#9455)
+* fixed x11 keyboard layout detection (#9433)
+* add missing API calls for server implementation (tested against ogon, #9453)
+* keep dynamic channels in a hash table instead of a list (#9448)
+* keep TSCredentials in server peer instance (#9430)
+* fix FFMPEG/AAC encoding (#9576)
+* support remote credential guard (#9574)
+* fix printing on mac os 14 (#9569)
+* improve RPC gateway support (#9508)
+* add opus audio support for gnome-remote-desktop (#9575)
+* server side handling of mouse cursor channel [MS-RDPEMSC] (#9513)
+
+For a complete and detailed change log since the last release run:
+git log 3.0.0-rc0..3.0.0-beta4
+
+# 2023-09-31 Version 3.0.0-beta4
+
+Noteworthy changes:
+* Improved and fixed AVD authentication, now allows retries for
+  machines just starting up
+* Improve RDP file parser, prepare new fields used by AVD
+* Fixed and improved pen support in multitouch implementation (xfreerdp)
+* Lots of smaller code and leak cleanups
+
+For a complete and detailed change log since the last release run:
+git log 3.0.0-beta4..3.0.0-beta3
+
+# 2023-08-31 Version 3.0.0-beta3
+
+Noteworthy changes:
+* fix xfreerdp keyboard on mac os
+* Various crashes and input check fixes
+* Improved logging of autodetect, redirection and fastpath failures
+* Smartcard emulation now selectable at runtime
+* Allow certificates without a subject to pass client checks
+* Fix FindFirstFile issues on android
+* Add FREERDP_ENTRY_POINT to silence -Wmissing-prototypes warnings for
+  library entry points
+* Add WINPR_RESTRICT to enable restrict (C99) or __restring (MSVC)
+  keywords for compiler
+* Fix support for older OpenSSL versions
+
+For a complete and detailed change log since the last release run:
+git log 3.0.0-beta3..3.0.0-beta2
+
+# 2023-08-03 Version 3.0.0-beta2
+
+Noteworthy changes:
+* Update CMake defaults, now all features are enabled by default with a platform
+  independent option if multiple are available.
+* SDL client: (basic) multimonitor support
+* SDL client: fix dialog cleanup order (crash fix)
+* clipboard: fix FUSE shutdown crash
+* fixed drive redirection: FindNextFile did miss some files/directories
+* improved AAD support: honor rdp file options
+* improved (gateway) http failure logging
+* improved shadow server error handling
+* improved CMake configuration (using find_dependency)
+* updated timezone definitions
+* mbedTLS build fixed
+* improved MINGW build support
+
+For a complete and detailed change log since the last release run:
+git log 3.0.0-beta2..3.0.0-beta1
+
+# 2023-07-21 Version 3.0.0-beta1
+
+We are pleased to announce the first beta release for the next stable 3.0
+series of FreeRDP. It has been a huge endeavour to implement all the new
+shiny bells and whistles as well as clean up the code base and we´re still
+ironing out some smaller glitches.
+This is the first API breaking change since the 2.0 series and there are
+some adjustments to be made for existing applications.
+See https://github.com/FreeRDP/FreeRDP/wiki/FreeRDP3-migration-notes for
+help (still incomplete)
+
+Noteworthy changes:
+* Support for AAD/AVD authentication
+* Support for websocket transport
+* Support smartcard authentication (TLS and NLA)
+* Full smartcard emulation support (login with certificate + key)
+* Rewritten proxy, new module API
+* New reference client based on SDL2 (work in progress)
+* Rewritten logging, now parsing issues are all writing to the log so
+  that issues with protocol incompatibilities can be easier analyzed
+  by just turning on logging
+* Full OpenSSL 3 support
+* Internal implementations for RC4, MD4 and MD5 (required for non critical
+  parts in RDP but not part of more recent SSL libraries)
+* Updated RDP protocol support
+* Improved xfreerdp remote app support
+* Reworked internal state machine for both client and server implementations
+* Server implementations can now make use of connect-time network autodetection
+* Improved clipboard handling, now also support server-to-client file transfer
+  (currently xfreerdp only)
+* EnhancedRemoteApp support: Utilizing the more modern standard allows remote
+  apps with less glitches and window shadows
+* Added client- and server-side handling for RDSTLS
+* Support for the graphics redirection channel
+
+For a complete and detailed change log since the last release run:
+git log 3.0.0-beta1..2.10.0
+
+

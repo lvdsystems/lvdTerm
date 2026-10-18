@@ -57,6 +57,30 @@ add_executable(lvdterm WIN32
     transports/ssh/SshWorker.h
     transports/ssh/X11Forwarder.cpp
     transports/ssh/X11Forwarder.h
+    transports/rdp/RdpClient.cpp
+    transports/rdp/RdpClient.h
+    transports/rdp/RdpConnectionSettings.h
+    transports/rdp/RdpTransport.cpp
+    transports/rdp/RdpTransport.h
+    ui/RdpConnectDialog.cpp
+    ui/RdpConnectDialog.h
+    ui/RdpSettingsWidget.cpp
+    ui/RdpSettingsWidget.h
+    ui/RdpWidget.cpp
+    ui/RdpWidget.h
+    transports/vnc/JpegDecoder.cpp
+    transports/vnc/JpegDecoder.h
+    transports/vnc/VncClient.cpp
+    transports/vnc/VncClient.h
+    transports/vnc/VncConnectionSettings.h
+    transports/vnc/VncTransport.cpp
+    transports/vnc/VncTransport.h
+    ui/VncConnectDialog.cpp
+    ui/VncConnectDialog.h
+    ui/VncSettingsWidget.cpp
+    ui/VncSettingsWidget.h
+    ui/VncWidget.cpp
+    ui/VncWidget.h
     sftp/SftpClient.cpp
     sftp/SftpClient.h
     sftp/SftpModel.cpp
@@ -116,6 +140,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in ${CMAKE_CURRENT_BINARY_D
 
 target_include_directories(lvdterm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/third_party/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
@@ -130,6 +155,7 @@ target_link_libraries(lvdterm PRIVATE
     Qt6::SerialPort
     qtermwidget_core
     libssh2::libssh2
+    lvd_freerdp
 )
 
 if(WIN32)
@@ -139,6 +165,12 @@ if(WIN32)
     # again itself. ws2_32 for sockets (libssh2), gdi32/crypt32/bcrypt for
     # OpenSSL's Windows entropy/cert-store calls.
     target_link_libraries(lvdterm PRIVATE ws2_32 gdi32 crypt32 bcrypt)
+
+    # VncClient uses OpenSSL's DES directly (VNC password challenge), not
+    # just through libssh2 - same vendored static OpenSSL, found via the
+    # OPENSSL_ROOT_DIR the top-level CMakeLists.txt sets.
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(lvdterm PRIVATE OpenSSL::Crypto)
 
     # Local shells via ConPTY (the Windows counterpart of PtyTransport
     # below); the pseudo-console API itself is resolved from kernel32 at

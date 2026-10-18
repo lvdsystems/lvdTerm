@@ -94,6 +94,13 @@ the view that actually makes sense for it:
   piece of text into the terminal, session logging to a file (with an optional per-line timestamp), and selectable
   keyboard-emulation profiles (Default / Linux Console / VT100) for keys
   that differ between them (arrows, Home/End, function keys, Backspace).
+- **VNC**: view and control a remote desktop in a pane (or a tab), using
+  lvdterm's own built-in VNC client - no external viewer needed. Supports
+  VNC password login; encrypted/compressed VNC variants are not supported yet.
+- **RDP**: connect to Windows machines (and xrdp servers) in a pane, using
+  the vendored [FreeRDP](https://www.freerdp.com/) library. Mouse and keyboard
+  only for now - no clipboard, audio or drive redirection - and the server
+  certificate is not verified yet.
 - **X11 forwarding**: an SSH connection can forward X11 (on by default,
   per connection) so remote graphical programs open on your desktop. lvdterm
   does not include an X server: on Linux it uses the desktop's own, and on

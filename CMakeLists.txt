@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 # NOTE: installer/lvdterm.iss has its own hardcoded AppVersion - not
 # auto-synced with this (the installer isn't part of the CMake build).
 # Bump both together.
-project(lvdterm VERSION 0.6 LANGUAGES CXX C) # C needed for vendored libssh2
+project(lvdterm VERSION 0.7 LANGUAGES CXX C) # C needed for vendored libssh2
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +48,10 @@ set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/libssh2 EXCLUDE_FROM_ALL)
+
+# Vendored FreeRDP (+ zlib on Windows) for RDP connections - defines
+# the lvd_freerdp target; see third_party/freerdp.cmake.
+include(third_party/freerdp.cmake)
 
 add_subdirectory(src)
 

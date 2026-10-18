@@ -30,6 +30,8 @@
 #include "transports/local/LocalTransport.h"
 #include "transports/ssh/SshTransport.h"
 #include "transports/telnet/TelnetTransport.h"
+#include "transports/rdp/RdpTransport.h"
+#include "transports/vnc/VncTransport.h"
 #include "ui/AboutDialog.h"
 #include "ui/ConnectionTreeDock.h"
 #include "ui/SerialConnectDialog.h"
@@ -42,6 +44,8 @@
 #include "ui/SshConnectDialog.h"
 #include "ui/SshCredentialDialog.h"
 #include "ui/TelnetConnectDialog.h"
+#include "ui/RdpConnectDialog.h"
+#include "ui/VncConnectDialog.h"
 #include "ui/WelcomeWidget.h"
 
 namespace
@@ -224,6 +228,14 @@ void MainWindow::createMenus()
     QAction *sshAction = connectionMenu->addAction(QStringLiteral("New SS&H Connection..."));
     registerCommand(QStringLiteral("connection.newSsh"), sshAction);
     connect(sshAction, &QAction::triggered, this, &MainWindow::newSshConnection);
+
+    QAction *vncAction = connectionMenu->addAction(QStringLiteral("New &VNC Connection..."));
+    registerCommand(QStringLiteral("connection.newVnc"), vncAction);
+    connect(vncAction, &QAction::triggered, this, &MainWindow::newVncConnection);
+
+    QAction *rdpAction = connectionMenu->addAction(QStringLiteral("New &RDP Connection..."));
+    registerCommand(QStringLiteral("connection.newRdp"), rdpAction);
+    connect(rdpAction, &QAction::triggered, this, &MainWindow::newRdpConnection);
 
     connectionMenu->addSeparator();
 
@@ -519,6 +531,50 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::runSshDialog()
     return result;
 }
 
+std::optional<MainWindow::NewConnectionResult> MainWindow::runVncDialog()
+{
+    VncConnectDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted)
+        return std::nullopt;
+
+    const VncConnectionSettings settings = dialog.settings();
+    if (settings.host.isEmpty())
+        return std::nullopt;
+
+    const QString title = QStringLiteral("%1:%2").arg(settings.host).arg(settings.port);
+
+    ConnectionProfile snapshot;
+    snapshot.type = ConnectionProfile::Type::Vnc;
+    snapshot.name = title;
+    snapshot.vnc = settings;
+
+    NewConnectionResult result{new VncTransport(settings), title, [settings] { return new VncTransport(settings); }};
+    result.snapshot = snapshot;
+    return result;
+}
+
+std::optional<MainWindow::NewConnectionResult> MainWindow::runRdpDialog()
+{
+    RdpConnectDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted)
+        return std::nullopt;
+
+    const RdpConnectionSettings settings = dialog.settings();
+    if (settings.host.isEmpty())
+        return std::nullopt;
+
+    const QString title = QStringLiteral("%1:%2").arg(settings.host).arg(settings.port);
+
+    ConnectionProfile snapshot;
+    snapshot.type = ConnectionProfile::Type::Rdp;
+    snapshot.name = title;
+    snapshot.rdp = settings;
+
+    NewConnectionResult result{new RdpTransport(settings), title, [settings] { return new RdpTransport(settings); }};
+    result.snapshot = snapshot;
+    return result;
+}
+
 std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(const ConnectionProfile &profile)
 {
     switch (profile.type) {
@@ -561,6 +617,18 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(cons
         result->snapshot = profile;
         return result;
     }
+    case ConnectionProfile::Type::Vnc: {
+        const VncConnectionSettings s = profile.vnc;
+        NewConnectionResult result{new VncTransport(s), profile.name, [s] { return new VncTransport(s); }, profile.autoReconnect};
+        result.snapshot = profile;
+        return result;
+    }
+    case ConnectionProfile::Type::Rdp: {
+        const RdpConnectionSettings s = profile.rdp;
+        NewConnectionResult result{new RdpTransport(s), profile.name, [s] { return new RdpTransport(s); }, profile.autoReconnect};
+        result.snapshot = profile;
+        return result;
+    }
     }
     Q_UNREACHABLE();
 }
@@ -580,6 +648,18 @@ void MainWindow::newTelnetConnection()
 void MainWindow::newSshConnection()
 {
     if (auto result = runSshDialog())
+        addTerminalTab(*result);
+}
+
+void MainWindow::newRdpConnection()
+{
+    if (auto result = runRdpDialog())
+        addTerminalTab(*result);
+}
+
+void MainWindow::newVncConnection()
+{
+    if (auto result = runVncDialog())
         addTerminalTab(*result);
 }
 
@@ -748,6 +828,24 @@ void MainWindow::changePaneSettings(TerminalView *view)
         profile.localShell = shell.trimmed();
         break;
     }
+    case ConnectionProfile::Type::Vnc: {
+        VncConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change VNC Settings"));
+        dialog.setSettings(profile.vnc);
+        if (dialog.exec() != QDialog::Accepted || dialog.settings().host.isEmpty())
+            return;
+        profile.vnc = dialog.settings();
+        break;
+    }
+    case ConnectionProfile::Type::Rdp: {
+        RdpConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change RDP Settings"));
+        dialog.setSettings(profile.rdp);
+        if (dialog.exec() != QDialog::Accepted || dialog.settings().host.isEmpty())
+            return;
+        profile.rdp = dialog.settings();
+        break;
+    }
     }
 
     // Keep an auto-generated name (user@host, COM3, host:port) in step with
@@ -759,6 +857,8 @@ void MainWindow::changePaneSettings(TerminalView *view)
     case ConnectionProfile::Type::Telnet: newAutoName = QStringLiteral("%1:%2").arg(profile.telnetHost).arg(profile.telnetPort); break;
     case ConnectionProfile::Type::Ssh: newAutoName = QStringLiteral("%1@%2").arg(profile.ssh.username, profile.ssh.host); break;
     case ConnectionProfile::Type::Local: break;
+    case ConnectionProfile::Type::Vnc: newAutoName = QStringLiteral("%1:%2").arg(profile.vnc.host).arg(profile.vnc.port); break;
+    case ConnectionProfile::Type::Rdp: newAutoName = QStringLiteral("%1:%2").arg(profile.rdp.host).arg(profile.rdp.port); break;
     }
     const int tabIndex = m_tabs->indexOf(view);
     const bool nameWasAuto = tabIndex >= 0 && m_tabs->tabText(tabIndex) == oldAutoName;

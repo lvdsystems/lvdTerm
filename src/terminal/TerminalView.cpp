@@ -34,6 +34,10 @@
 #include "core/ReconnectPolicy.h"
 #include "core/StateIcon.h"
 #include "core/Transport.h"
+#include "transports/rdp/RdpTransport.h"
+#include "transports/vnc/VncTransport.h"
+#include "ui/RdpWidget.h"
+#include "ui/VncWidget.h"
 #include "ColorSchemes.h"
 
 namespace
@@ -131,7 +135,9 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     , m_recreate(std::move(recreate))
     , m_sshSettings(std::move(sshSettings))
     , m_sessionSnapshot(std::move(sessionSnapshot))
-    , m_hexMode(m_sessionSnapshot && m_sessionSnapshot->viewer == ConnectionProfile::Viewer::Hex)
+    , m_hexMode(m_sessionSnapshot && m_sessionSnapshot->viewer == ConnectionProfile::Viewer::Hex && m_sessionSnapshot->type != ConnectionProfile::Type::Vnc && m_sessionSnapshot->type != ConnectionProfile::Type::Rdp)
+    , m_vncMode(m_sessionSnapshot && m_sessionSnapshot->type == ConnectionProfile::Type::Vnc)
+    , m_rdpMode(m_sessionSnapshot && m_sessionSnapshot->type == ConnectionProfile::Type::Rdp)
     , m_reconnectTimer(new QTimer(this))
     , m_countdownTimer(new QTimer(this))
 {
@@ -153,6 +159,18 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         for (QWidget *child : m_hexView->findChildren<QWidget *>())
             child->setAcceptDrops(false);
         connect(m_hexView, &HexDumpWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
+    }
+
+    if (m_vncMode) {
+        m_vncView = new VncWidget(this);
+        m_display->hide(); // never added to the layout in this mode, see the hex mode comment above
+        connect(m_vncView, &VncWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
+    }
+
+    if (m_rdpMode) {
+        m_rdpView = new RdpWidget(this);
+        m_display->hide();
+        connect(m_rdpView, &RdpWidget::contextMenuRequested, this, &TerminalView::contextMenuRequested);
     }
 
     // Room for the border paintEvent() draws, plus the configurable
@@ -203,7 +221,7 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
         connect(reconnectAction, &QAction::triggered, this, &TerminalView::doReconnectNow);
         // Clear Screen/Clear Buffer act on the VT100 emulation, which
         // hex mode doesn't have (see m_hexMode) - nothing for them to do.
-        if (!m_hexMode) {
+        if (!m_hexMode && !m_vncMode && !m_rdpMode) {
             menu.addSeparator();
             connect(menu.addAction(QStringLiteral("Clear Screen")), &QAction::triggered, this, &TerminalView::clearScreen);
             connect(menu.addAction(QStringLiteral("Clear Buffer")), &QAction::triggered, this, &TerminalView::clearBuffer);
@@ -212,17 +230,17 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     });
 
     layout->addWidget(statusBar); // stretch 0 (default): fixed to its sizeHint, above the display
-    layout->addWidget(m_hexMode ? static_cast<QWidget *>(m_hexView) : static_cast<QWidget *>(m_display), 1); // stretch 1: everything not needed by the status bar
+    layout->addWidget(m_rdpMode ? static_cast<QWidget *>(m_rdpView) : m_vncMode ? static_cast<QWidget *>(m_vncView) : m_hexMode ? static_cast<QWidget *>(m_hexView) : static_cast<QWidget *>(m_display), 1); // stretch 1: everything not needed by the status bar
     updateStatusBar(m_transport->state());
 
-    if (!m_hexMode) {
+    if (!m_hexMode && !m_vncMode && !m_rdpMode) {
         applyAppearance();
         m_display->setScrollBarPosition(QTermWidget::ScrollBarRight);
         m_display->setKeyboardCursorShape(QTermWidget::KeyboardCursorShape::BlockCursor);
         m_display->setBlinkingCursor(true);
     }
 
-    if (!m_hexMode) {
+    if (!m_hexMode && !m_vncMode && !m_rdpMode) {
         // Auto-copy on select: TerminalDisplay's own setSelection() (called
         // internally whenever the mouse selection changes) only ever writes to
         // QClipboard::Selection - the X11 "primary selection", which doesn't
@@ -276,7 +294,7 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
 
         setFocusProxy(m_display);
     } else {
-        setFocusProxy(m_hexView);
+        setFocusProxy(m_rdpMode ? static_cast<QWidget *>(m_rdpView) : m_vncMode ? static_cast<QWidget *>(m_vncView) : static_cast<QWidget *>(m_hexView));
     }
 
     m_reconnectTimer->setSingleShot(true);
@@ -289,7 +307,7 @@ TerminalView::TerminalView(Transport *transport, TransportFactory recreate, std:
     // Dedicated Copy/Paste keys (Qt::Key_Copy/Key_Paste - what a remapped
     // mouse button or a multimedia keyboard sends, XF86Copy/XF86Paste on
     // X11/Wayland). The emulation would otherwise just drop them.
-    if (!m_hexMode)
+    if (!m_hexMode && !m_vncMode && !m_rdpMode)
         m_display->installEventFilter(this);
 
     hookTransportSignals();
@@ -379,6 +397,11 @@ void TerminalView::clearBuffer()
 void TerminalView::ensureCorrectSize(const QSize &size)
 {
     resize(size);
+
+    if (m_vncMode || m_rdpMode) {
+        (m_vncMode ? static_cast<QWidget *>(m_vncView) : static_cast<QWidget *>(m_rdpView))->resize(size);
+        return;
+    }
 
     if (m_hexMode) {
         // HexDumpWidget has no column/line concept to re-derive from
@@ -619,6 +642,16 @@ void TerminalView::hookTransportSignals()
     // m_session/the VT100 emulation (see m_hexMode's declaration).
     if (m_hexMode)
         connect(m_transport, &Transport::readyRead, m_hexView, &HexDumpWidget::appendData);
+
+    // VNC mode: the pane draws straight from the transport's client.
+    if (m_vncMode) {
+        if (auto *vnc = qobject_cast<VncTransport *>(m_transport))
+            m_vncView->setClient(vnc->client());
+    }
+    if (m_rdpMode) {
+        if (auto *rdp = qobject_cast<RdpTransport *>(m_transport))
+            m_rdpView->setClient(rdp->client());
+    }
 }
 
 void TerminalView::replaceTransport(Transport *newTransport)
@@ -630,7 +663,7 @@ void TerminalView::replaceTransport(Transport *newTransport)
 
     m_transport = newTransport;
     m_transport->setParent(this);
-    if (!m_hexMode)
+    if (!m_hexMode && !m_vncMode && !m_rdpMode)
         m_session->setTransport(m_transport);
     hookTransportSignals();
 
@@ -756,7 +789,7 @@ void TerminalView::respawn()
     // A session log file, if any, is left alone.
     if (m_hexMode)
         m_hexView->clear();
-    else
+    else if (!m_vncMode && !m_rdpMode)
         clearBuffer();
 
     doReconnectNow();
@@ -934,6 +967,8 @@ void TerminalView::ensureFindBar()
 
 void TerminalView::showFindBar()
 {
+    if (m_vncMode || m_rdpMode)
+        return;
     ensureFindBar();
     m_findBar->show();
     m_findEdit->setFocus();
@@ -1100,6 +1135,12 @@ void TerminalView::updateStatusBar(Transport::State state)
         break;
     case ConnectionProfile::Type::Telnet:
         text = QStringLiteral("%1:%2 - %3").arg(m_sessionSnapshot->telnetHost).arg(m_sessionSnapshot->telnetPort).arg(stateText);
+        break;
+    case ConnectionProfile::Type::Rdp:
+        text = QStringLiteral("RDP %1:%2 - %3").arg(m_sessionSnapshot->rdp.host).arg(m_sessionSnapshot->rdp.port).arg(stateText);
+        break;
+    case ConnectionProfile::Type::Vnc:
+        text = QStringLiteral("VNC %1:%2 - %3").arg(m_sessionSnapshot->vnc.host).arg(m_sessionSnapshot->vnc.port).arg(stateText);
         break;
     case ConnectionProfile::Type::Local:
         text = state == Transport::State::Disconnected ? QStringLiteral("local - shell exited") : QStringLiteral("local - %1").arg(stateText);

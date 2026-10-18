@@ -1,14 +1,30 @@
 # Changelog
 
-## Unreleased
+## 0.7
 
 ### New Features
-- SSH X11 forwarding: a per-connection "Forward X11" option (on by default)
-  that displays remote graphical programs on the local X server named by
-  $DISPLAY.
-- Detach a tab into its own window (tab right-click > "Detach Tab to New Window"),
-  keeping its live connections; "Move Tab to Main Window" puts it back. Detached
-  tabs are restored as ordinary tabs on the next launch.
+- **VNC connections**: Connection > New VNC Connection..., or a saved connection of
+  type VNC, shown in a pane. lvdterm's own VNC client: VNC password login, Tight
+  (zlib and JPEG), ZRLE, Hextile, CopyRect and Raw encodings, mouse, keyboard and
+  two-way clipboard text. The picture is scaled to fit; Shift+right-click opens the
+  pane menu (a plain right-click goes to the remote machine).
+- **RDP connections**: Connection > New RDP Connection..., or a saved connection of
+  type RDP, shown in a pane (NLA/TLS login, mouse and keyboard, scaled to fit).
+  Built on the vendored FreeRDP library. No clipboard, audio or drive redirection
+  yet, and the server certificate is not verified.
+- **Detach a tab into its own window**: tab right-click > "Detach Tab to New
+  Window", keeping its live connections; "Move Tab to Main Window" puts it back.
+  Detached tabs are restored as ordinary tabs on the next launch.
+- **SSH X11 forwarding**: a per-connection "Forward X11" option (on by default)
+  that displays remote graphical programs on the local X server named by $DISPLAY.
+  lvdterm includes no X server: Linux uses the desktop's own; on Windows install
+  one such as VcXsrv (the connection form links to it).
+
+### Notes
+- New third-party components, all statically linked: FreeRDP (Apache-2.0), zlib
+  (Windows build) and stb_image (MIT / public domain). See THIRD_PARTY_LICENSES.md.
+- Not supported yet: VNC encrypted logins (VeNCrypt/TLS, e.g. security type 18),
+  RDP virtual channels.
 
 ## 0.6
 

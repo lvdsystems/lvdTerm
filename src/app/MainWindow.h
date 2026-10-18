@@ -78,6 +78,8 @@ private:
     void newSerialConnection();
     void newTelnetConnection();
     void newSshConnection();
+    void newVncConnection();
+    void newRdpConnection();
     std::optional<NewConnectionResult> localResult(const QString &shell); // empty = the platform's default shell
     void newLocalTerminal();
     void openProfile(const ConnectionProfile &profile);
@@ -85,6 +87,8 @@ private:
     std::optional<NewConnectionResult> runSerialDialog();
     std::optional<NewConnectionResult> runTelnetDialog();
     std::optional<NewConnectionResult> runSshDialog();
+    std::optional<NewConnectionResult> runVncDialog();
+    std::optional<NewConnectionResult> runRdpDialog();
     std::optional<NewConnectionResult> resultForProfile(const ConnectionProfile &profile);
 
     void addTerminalTab(const NewConnectionResult &result);
