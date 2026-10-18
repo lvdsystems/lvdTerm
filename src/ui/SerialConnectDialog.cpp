@@ -18,6 +18,11 @@ SerialConnectDialog::SerialConnectDialog(QWidget *parent) : QDialog(parent), m_w
     layout->addWidget(buttons);
 }
 
+void SerialConnectDialog::setSettings(const SerialPortSettings &settings)
+{
+    m_widget->setSettings(settings);
+}
+
 SerialPortSettings SerialConnectDialog::settings() const
 {
     return m_widget->settings();

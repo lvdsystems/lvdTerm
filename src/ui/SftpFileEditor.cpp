@@ -21,8 +21,18 @@
 #include <QVBoxLayout>
 
 #include "core/AppSettings.h"
+#include "core/ShortcutManager.h"
 #include "sftp/SftpSession.h"
 #include "ui/CodeEditor.h"
+
+namespace
+{
+// The key currently bound to `id`, for tooltips/hints ("" if unbound).
+QString keyText(const QString &id)
+{
+    return ShortcutManager::instance().sequence(id).toString(QKeySequence::NativeText);
+}
+} // namespace
 
 SftpFileEditor::SftpFileEditor(const SshConnectionSettings &settings, const QString &remotePath, QWidget *parent)
     : QWidget(parent, Qt::Window)
@@ -46,7 +56,8 @@ SftpFileEditor::SftpFileEditor(const SshConnectionSettings &settings, const QStr
     connect(m_edit->document(), &QTextDocument::modificationChanged, this, [this] { updateTitle(); });
 
     m_saveButton->setEnabled(false);
-    m_saveButton->setToolTip(QStringLiteral("Upload the changes (Ctrl+S)"));
+    m_saveButton->setToolTip(keyText(QStringLiteral("editor.save")).isEmpty() ? QStringLiteral("Upload the changes")
+                                                                              : QStringLiteral("Upload the changes (%1)").arg(keyText(QStringLiteral("editor.save"))));
     connect(m_saveButton, &QPushButton::clicked, this, [this] { startSave(); });
 
     auto *path = new QLabel(QStringLiteral("%1@%2:%3").arg(settings.username, settings.host, remotePath), this);
@@ -106,22 +117,20 @@ SftpFileEditor::SftpFileEditor(const SshConnectionSettings &settings, const QStr
     layout->addWidget(m_findBar);
     layout->addWidget(m_status);
 
-    auto *saveShortcut = new QShortcut(QKeySequence::Save, this);
-    saveShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(saveShortcut, &QShortcut::activated, this, [this] { startSave(); });
-    auto *closeShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+W")), this);
-    closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(closeShortcut, &QShortcut::activated, this, &QWidget::close);
-
-    auto *findShortcut = new QShortcut(QKeySequence::Find, this);
-    findShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(findShortcut, &QShortcut::activated, this, &SftpFileEditor::showFindBar);
-    auto *findNext = new QShortcut(QKeySequence::FindNext, this);
-    findNext->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(findNext, &QShortcut::activated, this, [this] { findStep(false); });
-    auto *findPrevious = new QShortcut(QKeySequence::FindPrevious, this);
-    findPrevious->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(findPrevious, &QShortcut::activated, this, [this] { findStep(true); });
+    // The keys come from ShortcutManager (Settings > Keyboard Shortcuts) and
+    // follow changes made while this editor is open.
+    auto makeShortcut = [this](const QString &id, auto &&handler) {
+        auto *shortcut = new QShortcut(ShortcutManager::instance().sequence(id), this);
+        shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(shortcut, &QShortcut::activated, this, handler);
+        connect(&ShortcutManager::instance(), &ShortcutManager::shortcutsChanged, shortcut,
+                [shortcut, id] { shortcut->setKey(ShortcutManager::instance().sequence(id)); });
+    };
+    makeShortcut(QStringLiteral("editor.save"), [this] { startSave(); });
+    makeShortcut(QStringLiteral("editor.close"), [this] { close(); });
+    makeShortcut(QStringLiteral("editor.find"), [this] { showFindBar(); });
+    makeShortcut(QStringLiteral("editor.findNext"), [this] { findStep(false); });
+    makeShortcut(QStringLiteral("editor.findPrevious"), [this] { findStep(true); });
     m_escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     m_escapeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     m_escapeShortcut->setEnabled(false); // only while the find bar is open
@@ -228,7 +237,13 @@ void SftpFileEditor::loadDownloadedFile()
     m_edit->setEnabled(true);
     m_edit->setFocus();
     m_loaded = true;
-    setStatus(QStringLiteral("%1 - %2 lines - Ctrl+S to save, Ctrl+F to find").arg(m_language).arg(m_edit->document()->blockCount()));
+    QString hint;
+    const QString saveKey = keyText(QStringLiteral("editor.save")), findKey = keyText(QStringLiteral("editor.find"));
+    if (!saveKey.isEmpty())
+        hint += QStringLiteral(" - %1 to save").arg(saveKey);
+    if (!findKey.isEmpty())
+        hint += QStringLiteral("%1 %2 to find").arg(saveKey.isEmpty() ? QStringLiteral(" -") : QStringLiteral(","), findKey);
+    setStatus(QStringLiteral("%1 - %2 lines%3").arg(m_language).arg(m_edit->document()->blockCount()).arg(hint));
     updateTitle();
 }
 

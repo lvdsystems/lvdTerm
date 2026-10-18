@@ -5,6 +5,7 @@
 
 class QPlainTextEdit;
 class QComboBox;
+class QRegularExpression;
 
 // A read-only, live-growing hex dump of raw bytes - the "viewer: hex"
 // alternative to the normal VT100-emulated TerminalDisplay (see
@@ -36,6 +37,10 @@ public:
 
     void appendData(const QByteArray &data);
     void clear();
+
+    // Finds the next/previous match of `regex` in the dump (hex digits and
+    // the ASCII column alike), wrapping around; selects it. False = none.
+    bool find(const QRegularExpression &regex, bool forwards);
 
     void setGrouping(Grouping grouping);
     Grouping grouping() const { return m_grouping; }

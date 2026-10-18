@@ -21,6 +21,9 @@ public:
     QString host() const;
     quint16 port() const;
     bool rawMode() const;
+    void setHost(const QString &host);
+    void setPort(quint16 port);
+    void setRawMode(bool raw);
 
 private:
     QLineEdit *m_hostEdit = nullptr;
