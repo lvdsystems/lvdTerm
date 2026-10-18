@@ -5,7 +5,7 @@
 <h1 align="center">lvdterm</h1>
 
 <p align="center">
-  A tabbed and splittable SSH / Telnet / Serial terminal emulator for Windows.
+  A tabbed and splittable SSH / Telnet / Serial terminal emulator for Windows and Linux.
 </p>
 
 <h2 align="center">
@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg"></a>
-  <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D6.svg">
+  <img alt="Platform: Windows | Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0078D6.svg">
   <img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C.svg">
   <img alt="Qt 6" src="https://img.shields.io/badge/Qt-6-41CD52.svg">
 </p>
@@ -23,8 +23,8 @@
 lvdterm is an open-source alternative to tools like mputty, teraterm, ... : one window,
 tabs and split panes, saved connections organized in folders, and an SFTP
 file browser docked alongside your shell — built on Qt 6 and a vendored,
-Windows-ported copy of Konsole/QTermWidget's terminal-emulation core (no
-Cygwin, no WSL requirement, no bundled X server).
+copy of Konsole/QTermWidget's terminal-emulation core, running natively on
+Windows (no Cygwin, no WSL requirement, no bundled X server) and Linux.
 
 Built by [LVD Systems S.r.l.](https://www.lvdsystems.eu) and released as
 part of [LVD Open](https://www.lvdopen.eu).
@@ -59,14 +59,22 @@ the view that actually makes sense for it:
 
 ## Features
 
+- **Windows and Linux**: one codebase, native on both. Windows ships as an
+  installer and a portable zip; Linux as an AppImage and a `.deb`.
 - **Connections**: Serial (with a live COM-port picker), Telnet, Raw TCP
-  (no Telnet protocol negotiation), and SSH (password or key-based auth).
+  (no Telnet protocol negotiation), SSH (password or key-based auth; a wrong
+  password prompts again instead of failing), and local terminal tabs
+  (cmd/PowerShell on Windows, your shell on Linux).
 - **Tabs and splits**: any tab can be split horizontally or vertically,
   duplicating the current connection or starting a new one; each tab shows
-  a colored status dot rolled up from every pane inside it.
+  a colored status dot rolled up from every pane inside it. Panes can be
+  dragged by their title strip to rearrange them (split on an edge, swap in
+  the middle), and a pane's menu offers Split, Close, Respawn Terminal and
+  Change Settings.
 - **Saved connections**: a folder-organized dock of saved connections,
   edited in place (add/edit/duplicate/delete/rename); secrets are
-  encrypted at rest with Windows DPAPI (still local-machine storage, not a
+  encrypted at rest with Windows DPAPI, or a libsecret-stored key
+  (GNOME Keyring/KWallet) on Linux (still local-machine storage, not a
   secrets vault — the app tells you this up front).
 - **Auto-reconnect**: a dropped connection retries with backoff and shows
   a live countdown/cancel overlay right over the affected pane.
@@ -76,12 +84,14 @@ the view that actually makes sense for it:
   Type / Size) for the currently focused SSH pane's remote filesystem —
   drag-and-drop upload for files and whole folders (recursive), a
   right-click context menu (rename/delete/download), and a non-blocking
-  toolbar for everything else.
+  toolbar for everything else. Create new files and edit remote text files
+  in a built-in editor with syntax highlighting and find.
 - **Terminal niceties**: auto-copy on selection, right-click to paste, a
   status bar context menu (Reconnect / Clear Screen / Clear Buffer)
-  mirrored in a "Terminal" menu, Ctrl+Shift+F scrollback search,
-  Ctrl+Shift+C/V copy/paste (every shortcut is rebindable under Settings >
-  Keyboard Shortcuts), session logging to a file (with an optional per-line timestamp), and selectable
+  mirrored in a "Terminal" menu, Ctrl+Shift+F scrollback search (also in
+  Hex panes), Ctrl+Shift+C/V copy/paste, a Settings > Keyboard Shortcuts
+  page where every shortcut is rebindable and custom shortcuts can type a
+  piece of text into the terminal, session logging to a file (with an optional per-line timestamp), and selectable
   keyboard-emulation profiles (Default / Linux Console / VT100) for keys
   that differ between them (arrows, Home/End, function keys, Backspace).
 - **Hex viewer**: a per-connection alternative to the terminal for
@@ -107,15 +117,23 @@ or PR.
 | SFTP browser | ✅ built-in, Explorer-style, drag-and-drop | ❌ separate `psftp.exe`/`pscp.exe` CLI tools | ❌ launches external `psftp`/`pscp` | ❌ no GUI SFTP (SCP via macro only) |
 | Auto-reconnect | ✅ with backoff + a live retry countdown | ❌ | ❌ | ❌ | 
 | Session layout save/restore | ✅ whole tab/split layout, across restarts | ❌ | Reopens saved sessions, not a live layout | ❌ | 
-| Local shell tab (cmd/PowerShell/WSL) | Not yet (on the roadmap) | ❌ | ❌ | ❌ |
+| Local shell tab (cmd/PowerShell/WSL) | ✅ | ❌ | ❌ | ❌ |
 | Macro / scripting | ❌ | ❌ (scriptable only externally via `plink`) | Basic (auto-login, run commands on connect) | ✅ powerful (Tera Term Language) |
-| Platform | Windows | Windows (plus community Unix/Mac ports) | Windows | Windows |
+| Platform | Windows, Linux | Windows (plus community Unix/Mac ports) | Windows | Windows |
 
 ## Installing
 
-No signed installer is published yet (see [`installer/lvdterm.iss`](installer/lvdterm.iss)
-for the [Inno Setup](https://jrsoftware.org/isinfo.php) script used to
-build one, once compiled). Until then, build from source below.
+Prebuilt packages are attached to each
+[release](https://github.com/lvdsystems/lvdTerm/releases/latest) (not code
+signed):
+
+- **Windows**: `lvdterm-setup-<version>.exe`, built from
+  [`installer/lvdterm.iss`](installer/lvdterm.iss) with
+  [Inno Setup](https://jrsoftware.org/isinfo.php), or the portable zip below.
+- **Linux**: `lvdterm-<version>-x86_64.AppImage` (see the Linux section
+  below) or the `.deb`.
+
+Or build from source below.
 
 A portable, extract-and-run build (no installer, no admin rights, no
 registry/Start Menu changes) can be produced from a built Release preset
@@ -155,7 +173,7 @@ Inno Setup script above.
 A `llvm-mingw` (Debug) preset is also defined, building to
 `build/llvm-mingw/dist/`.
 
-**Linux (experimental)**
+**Linux**
 
 lvdterm also builds and runs on Linux, using the `linux`/`linux-release`
 presets - no hardcoded paths to edit, since these just rely on your
@@ -194,8 +212,7 @@ see [`packaging/linux/README.md`](packaging/linux/README.md).
 Saved passwords/passphrases are encrypted via a libsecret-stored key
 (GNOME Keyring/KWallet) instead of Windows DPAPI - see
 [`src/core/Crypto.cpp`](src/core/Crypto.cpp) for the full design and why.
-This Linux build is newer and less battle-tested than the Windows one;
-please open an issue for anything that doesn't work.
+The Linux build is newer than the Windows one; please open an issue for anything that doesn't work.
 
 **Note if building/packaging under WSL**: do it from WSL's own native
 filesystem (e.g. `~/`), not a Windows-mounted drive (`/mnt/c/`, `/mnt/d/`,

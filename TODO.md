@@ -5,6 +5,19 @@ see the README for the broader feature picture and what's deliberately
 out of scope for now. Open an issue before starting on any of these
 (see [CONTRIBUTING.md](CONTRIBUTING.md)) so effort doesn't collide.
 
+## Next release (0.7)
+
+- **X11 forwarding for SSH**: a per-connection flag in the connection
+  settings (default: on) that requests X11 forwarding on the SSH channel,
+  so remote X clients display on the machine running lvdterm.
+- **Local X server**: bundle/launch a local X server so those forwarded
+  remote windows have somewhere to display (mainly for Windows, which has
+  none of its own).
+- **RDP and VNC connections**: new connection types, displayed in a tab
+  like the existing SSH/Telnet/Serial ones.
+- **Detach a tab**: move a tab out into its own separate window, and
+  presumably drag it back.
+
 ## Build OpenSSL from source instead of vendoring a prebuilt binary
 
 `third_party/openssl-prebuilt/` currently ships committed `libcrypto.a`/
