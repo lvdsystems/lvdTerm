@@ -55,6 +55,8 @@ add_executable(lvdterm WIN32
     transports/ssh/SshTransport.h
     transports/ssh/SshWorker.cpp
     transports/ssh/SshWorker.h
+    transports/ssh/X11Forwarder.cpp
+    transports/ssh/X11Forwarder.h
     sftp/SftpClient.cpp
     sftp/SftpClient.h
     sftp/SftpModel.cpp

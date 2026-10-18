@@ -11,6 +11,7 @@
 class QSocketNotifier;
 class QTimer;
 class SshTransport;
+class X11Forwarder;
 
 // Does all the actual (blocking, by nature) libssh2 work: TCP connect,
 // handshake, host key verification, auth, pty/shell channel setup, then
@@ -73,6 +74,7 @@ private:
     QSocketNotifier *m_readNotifier = nullptr;
     QSocketNotifier *m_writeNotifier = nullptr;
     QTimer *m_keepaliveTimer = nullptr;
+    X11Forwarder *m_x11 = nullptr;
 
     QByteArray m_pendingWrite;
     Stage m_stage = Stage::Idle;

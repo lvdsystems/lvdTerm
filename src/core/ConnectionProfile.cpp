@@ -112,6 +112,7 @@ QJsonObject ConnectionProfile::toJson() const
         s[QStringLiteral("passwordProtected")] = protectToBase64(ssh.password);
         s[QStringLiteral("promptForPassword")] = ssh.promptForPassword;
         s[QStringLiteral("passphraseProtected")] = protectToBase64(ssh.passphrase);
+        s[QStringLiteral("forwardX11")] = ssh.forwardX11;
         o[QStringLiteral("ssh")] = s;
         break;
     }
@@ -171,6 +172,7 @@ ConnectionProfile ConnectionProfile::fromJson(const QJsonObject &object)
         p.ssh.password = unprotectFromBase64(s[QStringLiteral("passwordProtected")].toString());
         p.ssh.promptForPassword = s[QStringLiteral("promptForPassword")].toBool(false);
         p.ssh.passphrase = unprotectFromBase64(s[QStringLiteral("passphraseProtected")].toString());
+        p.ssh.forwardX11 = s[QStringLiteral("forwardX11")].toBool(true);
         break;
     }
     case Type::Local:

@@ -34,7 +34,12 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    // `primary` is null for the application's main window. A non-null one
+    // makes this a secondary window that tabs get detached into (see
+    // detachTab()): it shares the primary's saved connections, starts with
+    // its side docks hidden and no session of its own to restore.
+    explicit MainWindow(MainWindow *primary = nullptr);
+    ~MainWindow() override;
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -103,6 +108,14 @@ private:
     void onFocusChanged(QWidget *old, QWidget *now);
     void updatePaneFrames(); // accent border on the active pane only
     void showTabContextMenu(const QPoint &pos);
+
+    // Detaching a tab: the tab's whole page (panes, live connections and
+    // all) is re-homed into another MainWindow - nothing reconnects.
+    void detachTab(int index);          // into a new secondary window
+    void moveTabToPrimary(int index);   // back into the main window
+    void transferTab(int index, MainWindow *dest);
+    void acceptTab(QWidget *root, const QString &title, const QIcon &icon);
+    void wireView(TerminalView *view);  // connects a pane's signals to this window
     void onCurrentTabChanged(int index); // focuses the new tab's first pane
 
     // m_activeView is only set once a real Qt focus-change event has
@@ -126,6 +139,10 @@ private:
     QWidget *buildNode(const SessionNode &node);
     void fixHiddenTabSizes(); // see showEvent()
     static void applyCorrectSize(QWidget *widget, const QSize &size); // recursive: TerminalView leaf or QSplitter
+
+    static QList<MainWindow *> s_windows; // every open window, the primary first
+    static bool s_quitting;               // the primary is closing: secondary windows go without asking
+    bool m_secondary = false;
 
     ProfileStore *m_profileStore = nullptr;
     ConnectionTreeDock *m_connectionDock = nullptr;

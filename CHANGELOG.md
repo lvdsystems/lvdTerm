@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+- SSH X11 forwarding: a per-connection "Forward X11" option (on by default)
+  that displays remote graphical programs on the local X server named by
+  $DISPLAY.
+- Detach a tab into its own window (tab right-click > "Detach Tab to New Window"),
+  keeping its live connections; "Move Tab to Main Window" puts it back. Detached
+  tabs are restored as ordinary tabs on the next launch.
+
 ## 0.6
 
 ### New Features
