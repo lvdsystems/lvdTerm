@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6
 
 ### New Features
 - Settings > Keyboard Shortcuts: a dedicated page listing every shortcut, with
@@ -19,6 +19,26 @@
   started from a shell with a stale session D-Bus address (the bus had restarted
   since the shell began, so Qt refused to connect and never learned the button
   layout). The address is now repaired at startup.
+
+## 0.5
+
+### New Features
+- Local terminal tabs (cmd/PowerShell/shell), with shortcuts to open and close
+  windows.
+- A sub-menu inside each window with Split and Close.
+- SFTP: create new files, a built-in file editor with syntax highlighting, and
+  find; Del key and media/back-forward button navigation in the file list.
+- Copy on select in the terminal.
+- Connection folder selection and management reworked.
+- UI/UX refresh across the application.
+
+### Bugfix
+- SFTP pane layout at small sizes.
+
+## 0.4
+
+### New Features
+- Linux support: builds and runs on Linux, packaged as a .deb and an AppImage.
 
 ## 0.3.2
 
