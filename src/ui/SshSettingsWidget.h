@@ -39,4 +39,6 @@ private:
     QCheckBox *m_promptPasswordCheck = nullptr;
     QLineEdit *m_keyPathEdit = nullptr;
     QLineEdit *m_passphraseEdit = nullptr;
+
+    QCheckBox *m_forwardX11Check = nullptr;
 };

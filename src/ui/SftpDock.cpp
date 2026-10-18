@@ -674,6 +674,73 @@ SftpDock::SftpDock(QWidget *parent)
 SftpDock::~SftpDock()
 {
     teardownSession();
+    for (const Parked &parked : std::as_const(m_parked)) {
+        parked.session->disconnectFromHost();
+        parked.session->deleteLater();
+    }
+    m_parked.clear();
+}
+
+QString SftpDock::connectionKey(const SshConnectionSettings &settings)
+{
+    return QStringLiteral("%1@%2:%3").arg(settings.username, settings.host).arg(settings.port);
+}
+
+void SftpDock::parkSession()
+{
+    constexpr int kMaxParked = 6;
+
+    // Only a session that actually got connected is worth keeping (the model
+    // has a root once it has).
+    if (m_session && m_settings && !m_model->rootPath().isEmpty()) {
+        const QString key = connectionKey(*m_settings);
+        m_session->disconnect(this);       // stop reporting to the dock while parked
+        if (auto old = m_parked.take(key); old.session && old.session != m_session) {
+            old.session->disconnectFromHost();
+            old.session->deleteLater();
+        }
+        if (m_parked.size() >= kMaxParked) {
+            const auto first = m_parked.begin();
+            first->session->disconnectFromHost();
+            first->session->deleteLater();
+            m_parked.erase(first);
+        }
+        m_parked.insert(key, Parked{m_session, m_model->rootPath()});
+        // A parked session that drops (server closed it) is forgotten, so
+        // coming back to its pane logs in again rather than using a dead one.
+        SftpSession *session = m_session;
+        connect(session, &SftpSession::disconnected, this, [this, session] {
+            for (auto it = m_parked.begin(); it != m_parked.end(); ++it) {
+                if (it->session == session) {
+                    session->deleteLater();
+                    m_parked.erase(it);
+                    return;
+                }
+            }
+        });
+        m_session = nullptr;
+        m_view->setSession(nullptr);
+        m_backStack.clear();
+        m_forwardStack.clear();
+        return;
+    }
+    teardownSession();
+}
+
+void SftpDock::keepOnly(const QList<SshConnectionSettings> &inUse)
+{
+    QStringList keys;
+    for (const SshConnectionSettings &s : inUse)
+        keys << connectionKey(s);
+    for (auto it = m_parked.begin(); it != m_parked.end();) {
+        if (!keys.contains(it.key())) {
+            it->session->disconnectFromHost();
+            it->session->deleteLater();
+            it = m_parked.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void SftpDock::teardownSession()
@@ -699,7 +766,7 @@ void SftpDock::setActiveConnection(const std::optional<SshConnectionSettings> &s
                                                                           && settings->username == m_settings->username)))
         return;
 
-    teardownSession();
+    parkSession();
     m_settings = settings;
     m_model->setRoot(QString());
     updatePathLabel();
@@ -716,20 +783,32 @@ void SftpDock::setActiveConnection(const std::optional<SshConnectionSettings> &s
     m_toolbar->setEnabled(true);
     setStatus(QStringLiteral("Connecting..."));
 
+    // Back to a pane whose session was kept: no new login.
+    if (const auto parked = m_parked.take(connectionKey(*m_settings)); parked.session) {
+        m_session = parked.session;
+        attachSession(m_session);
+        onConnected(parked.home);
+        return;
+    }
+
     m_session = new SftpSession(*m_settings, this);
-    m_view->setSession(m_session);
-
-    connect(m_session, &SftpSession::connected, this, &SftpDock::onConnected);
-    connect(m_session, &SftpSession::connectFailed, this, &SftpDock::onConnectFailed);
-    connect(m_session, &SftpSession::directoryListed, this, &SftpDock::onDirectoryListed);
-    connect(m_session, &SftpSession::operationFailed, this, &SftpDock::onOperationFailed);
-    connect(m_session, &SftpSession::operationSucceeded, this, &SftpDock::onOperationSucceeded);
-    connect(m_session, &SftpSession::transferStarted, this, &SftpDock::onTransferStarted);
-    connect(m_session, &SftpSession::transferProgress, this, &SftpDock::onTransferProgress);
-    connect(m_session, &SftpSession::transferFinished, this, &SftpDock::onTransferFinished);
-    connect(m_view, &SftpBrowserView::uploadRequested, this, &SftpDock::onUploadRequested);
-
+    attachSession(m_session);
     m_session->connectToHost();
+}
+
+void SftpDock::attachSession(SftpSession *session)
+{
+    m_view->setSession(session);
+
+    connect(session, &SftpSession::connected, this, &SftpDock::onConnected);
+    connect(session, &SftpSession::connectFailed, this, &SftpDock::onConnectFailed);
+    connect(session, &SftpSession::directoryListed, this, &SftpDock::onDirectoryListed);
+    connect(session, &SftpSession::operationFailed, this, &SftpDock::onOperationFailed);
+    connect(session, &SftpSession::operationSucceeded, this, &SftpDock::onOperationSucceeded);
+    connect(session, &SftpSession::transferStarted, this, &SftpDock::onTransferStarted);
+    connect(session, &SftpSession::transferProgress, this, &SftpDock::onTransferProgress);
+    connect(session, &SftpSession::transferFinished, this, &SftpDock::onTransferFinished);
+    connect(m_view, &SftpBrowserView::uploadRequested, this, &SftpDock::onUploadRequested, Qt::UniqueConnection);
 }
 
 void SftpDock::onConnected(const QString &homePath)

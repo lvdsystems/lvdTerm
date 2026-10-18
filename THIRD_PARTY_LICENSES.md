@@ -43,6 +43,29 @@ the explanation after the list.
   curve25519-sha256 support) - see `third_party/openssl-prebuilt/BUILDING.md`.
 - **Full license:** `third_party/openssl-prebuilt/LICENSE.txt`.
 
+## FreeRDP (vendored)
+
+- **License:** Apache License 2.0 (compatible with GPL-3.0-or-later, like
+  OpenSSL above).
+- **Used as:** the RDP protocol library behind RDP connections, statically
+  linked (the `freerdp` and `winpr` libraries only, built without any
+  virtual-channel plugins) - see `third_party/freerdp/VENDORING.md`.
+- **Full license:** `third_party/freerdp/LICENSE`.
+
+## zlib (vendored, Windows build)
+
+- **License:** the zlib license (permissive).
+- **Used as:** a dependency of FreeRDP; vendored for the Windows build only
+  (the toolchain ships none) - Linux uses the distribution's zlib.
+- **Full license:** `third_party/zlib/LICENSE`.
+
+## stb_image (vendored)
+
+- **License:** MIT or public domain (your choice; the text is at the end of
+  `third_party/stb/stb_image.h`).
+- **Used as:** the JPEG decoder for the VNC Tight encoding
+  (`src/transports/vnc/JpegDecoder.cpp`) - a single header, JPEG only.
+
 ## Tabler Icons (app icon)
 
 - **License:** MIT.

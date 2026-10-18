@@ -13,6 +13,8 @@ class QCheckBox;
 class QPushButton;
 class SerialSettingsWidget;
 class SshSettingsWidget;
+class VncSettingsWidget;
+class RdpSettingsWidget;
 
 // "New/Edit Connection" dialog for the saved-connections tree: a name,
 // a folder path, a type, and that type's settings (via
@@ -65,4 +67,6 @@ private:
     QCheckBox *m_telnetRawModeCheck = nullptr;
     SshSettingsWidget *m_sshWidget = nullptr;
     QLineEdit *m_localShellEdit = nullptr;
+    VncSettingsWidget *m_vncWidget = nullptr;
+    RdpSettingsWidget *m_rdpWidget = nullptr;
 };

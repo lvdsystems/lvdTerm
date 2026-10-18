@@ -6,6 +6,7 @@
 
 #include "SshConnectHelper.h"
 #include "SshTransport.h"
+#include "X11Forwarder.h"
 
 SshWorker::SshWorker(SshConnectionSettings settings, SshTransport *transport)
     : m_settings(std::move(settings))
@@ -139,6 +140,11 @@ bool SshWorker::openShellChannel()
         return false;
     }
 
+    if (m_settings.forwardX11) {
+        m_x11 = new X11Forwarder(m_session, this);
+        m_x11->requestOn(m_channel); // refusal is fine: no forwarding, shell still works
+    }
+
     if (libssh2_channel_shell(m_channel) != 0) {
         emit errorOccurred(QStringLiteral("Could not start a shell"));
         return false;
@@ -180,6 +186,8 @@ void SshWorker::onReadActivity()
         return;
 
     char buffer[16384];
+    if (m_x11)
+        m_x11->pump();
     for (;;) {
         const ssize_t n = libssh2_channel_read(m_channel, buffer, sizeof(buffer));
         if (n > 0) {
@@ -241,6 +249,8 @@ void SshWorker::teardown()
     m_readNotifier = nullptr;
     delete m_writeNotifier;
     m_writeNotifier = nullptr;
+    delete m_x11; // frees its channels, so before the session goes
+    m_x11 = nullptr;
 
     if (m_channel) {
         libssh2_channel_free(m_channel);

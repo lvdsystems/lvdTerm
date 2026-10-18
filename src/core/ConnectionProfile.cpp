@@ -15,6 +15,10 @@ QString typeToString(ConnectionProfile::Type type)
         return QStringLiteral("ssh");
     case ConnectionProfile::Type::Local:
         return QStringLiteral("local");
+    case ConnectionProfile::Type::Vnc:
+        return QStringLiteral("vnc");
+    case ConnectionProfile::Type::Rdp:
+        return QStringLiteral("rdp");
     }
     return QStringLiteral("serial");
 }
@@ -27,6 +31,10 @@ ConnectionProfile::Type typeFromString(const QString &s)
         return ConnectionProfile::Type::Ssh;
     if (s == QStringLiteral("local"))
         return ConnectionProfile::Type::Local;
+    if (s == QStringLiteral("vnc"))
+        return ConnectionProfile::Type::Vnc;
+    if (s == QStringLiteral("rdp"))
+        return ConnectionProfile::Type::Rdp;
     return ConnectionProfile::Type::Serial;
 }
 
@@ -112,6 +120,7 @@ QJsonObject ConnectionProfile::toJson() const
         s[QStringLiteral("passwordProtected")] = protectToBase64(ssh.password);
         s[QStringLiteral("promptForPassword")] = ssh.promptForPassword;
         s[QStringLiteral("passphraseProtected")] = protectToBase64(ssh.passphrase);
+        s[QStringLiteral("forwardX11")] = ssh.forwardX11;
         o[QStringLiteral("ssh")] = s;
         break;
     }
@@ -119,6 +128,26 @@ QJsonObject ConnectionProfile::toJson() const
         QJsonObject l;
         l[QStringLiteral("shell")] = localShell;
         o[QStringLiteral("local")] = l;
+        break;
+    }
+    case Type::Vnc: {
+        QJsonObject v;
+        v[QStringLiteral("host")] = vnc.host;
+        v[QStringLiteral("port")] = vnc.port;
+        v[QStringLiteral("passwordProtected")] = protectToBase64(vnc.password);
+        o[QStringLiteral("vnc")] = v;
+        break;
+    }
+    case Type::Rdp: {
+        QJsonObject r;
+        r[QStringLiteral("host")] = rdp.host;
+        r[QStringLiteral("port")] = rdp.port;
+        r[QStringLiteral("username")] = rdp.username;
+        r[QStringLiteral("domain")] = rdp.domain;
+        r[QStringLiteral("passwordProtected")] = protectToBase64(rdp.password);
+        r[QStringLiteral("desktopWidth")] = rdp.desktopWidth;
+        r[QStringLiteral("desktopHeight")] = rdp.desktopHeight;
+        o[QStringLiteral("rdp")] = r;
         break;
     }
     }
@@ -171,11 +200,30 @@ ConnectionProfile ConnectionProfile::fromJson(const QJsonObject &object)
         p.ssh.password = unprotectFromBase64(s[QStringLiteral("passwordProtected")].toString());
         p.ssh.promptForPassword = s[QStringLiteral("promptForPassword")].toBool(false);
         p.ssh.passphrase = unprotectFromBase64(s[QStringLiteral("passphraseProtected")].toString());
+        p.ssh.forwardX11 = s[QStringLiteral("forwardX11")].toBool(true);
         break;
     }
     case Type::Local:
         p.localShell = object[QStringLiteral("local")].toObject()[QStringLiteral("shell")].toString();
         break;
+    case Type::Vnc: {
+        const QJsonObject v = object[QStringLiteral("vnc")].toObject();
+        p.vnc.host = v[QStringLiteral("host")].toString();
+        p.vnc.port = static_cast<quint16>(v[QStringLiteral("port")].toInt(5900));
+        p.vnc.password = unprotectFromBase64(v[QStringLiteral("passwordProtected")].toString());
+        break;
+    }
+    case Type::Rdp: {
+        const QJsonObject r = object[QStringLiteral("rdp")].toObject();
+        p.rdp.host = r[QStringLiteral("host")].toString();
+        p.rdp.port = static_cast<quint16>(r[QStringLiteral("port")].toInt(3389));
+        p.rdp.username = r[QStringLiteral("username")].toString();
+        p.rdp.domain = r[QStringLiteral("domain")].toString();
+        p.rdp.password = unprotectFromBase64(r[QStringLiteral("passwordProtected")].toString());
+        p.rdp.desktopWidth = r[QStringLiteral("desktopWidth")].toInt(1280);
+        p.rdp.desktopHeight = r[QStringLiteral("desktopHeight")].toInt(800);
+        break;
+    }
     }
 
     return p;

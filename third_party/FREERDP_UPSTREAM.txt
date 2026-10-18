@@ -1,0 +1,6 @@
+source=https://github.com/FreeRDP/FreeRDP.git
+tag=3.32.2
+commit=97eff6ddfbbfaa8e42a126d362686bd001ff8bdc
+commit_date=Thu Oct 8 15:37:43 2026 +0200
+vendored_subset=CMakeLists.txt, cmake/, include/, libfreerdp/, winpr/ (see third_party/freerdp/VENDORING.md)
+license=Apache-2.0 (see third_party/freerdp/LICENSE)

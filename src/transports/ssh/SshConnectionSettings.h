@@ -46,6 +46,11 @@ struct SshConnectionSettings
     // AuthMethod::PublicKey.
     QString privateKeyPath;
     QString passphrase;
+
+    // Forward X11 to the local X server named by $DISPLAY (see
+    // X11Forwarder). Harmless if the server refuses or no local X server
+    // is running - the shell works either way.
+    bool forwardX11 = true;
 };
 
 // The result of asking the user for a fresh password mid-connect, after

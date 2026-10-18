@@ -6,6 +6,8 @@
 
 #include "transports/serial/SerialPortSettings.h"
 #include "transports/ssh/SshConnectionSettings.h"
+#include "transports/rdp/RdpConnectionSettings.h"
+#include "transports/vnc/VncConnectionSettings.h"
 
 // A saved connection: a name, a place in the folder tree, a type, and
 // that type's settings. Only the member matching `type` is meaningful;
@@ -20,6 +22,8 @@ struct ConnectionProfile
         Telnet,
         Ssh,
         Local, // a shell on a local pty/ConPTY - see LocalTransport
+        Vnc,   // a remote desktop - see VncTransport/VncWidget
+        Rdp,   // a Windows remote desktop - see RdpTransport/RdpWidget
     };
 
     QUuid id = QUuid::createUuid();
@@ -63,6 +67,9 @@ struct ConnectionProfile
     bool rawMode = false; // Telnet type only: plain TCP, no IAC negotiation - see RawTransport
 
     SshConnectionSettings ssh;
+
+    VncConnectionSettings vnc;
+    RdpConnectionSettings rdp;
 
     QString localShell; // Local type only: empty = the platform default ($SHELL, or PowerShell on Windows)
 

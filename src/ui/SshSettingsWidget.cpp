@@ -4,6 +4,7 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
@@ -24,7 +25,9 @@ SshSettingsWidget::SshSettingsWidget(QWidget *parent)
     , m_promptPasswordCheck(new QCheckBox(QStringLiteral("Ask each time"), this))
     , m_keyPathEdit(new QLineEdit(this))
     , m_passphraseEdit(new QLineEdit(this))
+    , m_forwardX11Check(new QCheckBox(QStringLiteral("Forward X11 (display remote graphical programs locally)"), this))
 {
+    m_forwardX11Check->setChecked(true);
     m_hostEdit->setPlaceholderText(QStringLiteral("hostname or IP address"));
     m_portSpin->setRange(1, 65535);
     m_portSpin->setValue(22);
@@ -95,6 +98,18 @@ SshSettingsWidget::SshSettingsWidget(QWidget *parent)
     form->addRow(QStringLiteral("Username:"), usernameRow);
     form->addRow(QStringLiteral("Authenticate with:"), authMethodRow);
     form->addRow(m_authStack);
+    form->addRow(m_forwardX11Check);
+#ifdef Q_OS_WIN
+    // lvdterm bundles no X server: on Windows one has to be installed
+    // separately (on Linux the desktop's own is used).
+    auto *x11Note = new QLabel(
+        QStringLiteral("Requires a local X server installed: "
+                       "<a href=\"https://sourceforge.net/projects/vcxsrv/\">get VcXsrv</a>"),
+        this);
+    x11Note->setOpenExternalLinks(true);
+    x11Note->setWordWrap(true);
+    form->addRow(x11Note);
+#endif
 
     updateAuthStack();
 }
@@ -119,6 +134,7 @@ SshConnectionSettings SshSettingsWidget::settings() const
     s.port = static_cast<quint16>(m_portSpin->value());
     s.username = m_usernameEdit->text().trimmed();
     s.promptForUsername = m_promptUsernameCheck->isChecked();
+    s.forwardX11 = m_forwardX11Check->isChecked();
 
     if (m_keyRadio->isChecked()) {
         s.authMethod = SshConnectionSettings::AuthMethod::PublicKey;
@@ -139,6 +155,7 @@ void SshSettingsWidget::setSettings(const SshConnectionSettings &settings)
     m_portSpin->setValue(settings.port);
     m_usernameEdit->setText(settings.username);
     m_promptUsernameCheck->setChecked(settings.promptForUsername);
+    m_forwardX11Check->setChecked(settings.forwardX11);
 
     if (settings.authMethod == SshConnectionSettings::AuthMethod::PublicKey) {
         m_keyRadio->setChecked(true);

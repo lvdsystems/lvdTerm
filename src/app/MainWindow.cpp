@@ -30,6 +30,8 @@
 #include "transports/local/LocalTransport.h"
 #include "transports/ssh/SshTransport.h"
 #include "transports/telnet/TelnetTransport.h"
+#include "transports/rdp/RdpTransport.h"
+#include "transports/vnc/VncTransport.h"
 #include "ui/AboutDialog.h"
 #include "ui/ConnectionTreeDock.h"
 #include "ui/SerialConnectDialog.h"
@@ -42,6 +44,8 @@
 #include "ui/SshConnectDialog.h"
 #include "ui/SshCredentialDialog.h"
 #include "ui/TelnetConnectDialog.h"
+#include "ui/RdpConnectDialog.h"
+#include "ui/VncConnectDialog.h"
 #include "ui/WelcomeWidget.h"
 
 namespace
@@ -80,9 +84,13 @@ public:
 };
 } // namespace
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , m_profileStore(new ProfileStore(this))
+QList<MainWindow *> MainWindow::s_windows;
+bool MainWindow::s_quitting = false;
+
+MainWindow::MainWindow(MainWindow *primary)
+    : QMainWindow(nullptr)
+    , m_secondary(primary != nullptr)
+    , m_profileStore(primary ? primary->m_profileStore : new ProfileStore(this))
     , m_connectionDock(new ConnectionTreeDock(m_profileStore, this))
     , m_sftpDock(new SftpDock(this))
     , m_tabs(new QTabWidget(this))
@@ -121,6 +129,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     createMenus();
 
+    s_windows.append(this);
+
+    if (m_secondary) {
+        // Opened by detachTab(), which fills it right away: no session of its
+        // own, and the side docks start out of the way (View menu brings them back).
+        m_connectionDock->hide();
+        m_sftpDock->hide();
+        return;
+    }
+
     const SessionState session = SessionStore::load();
     if (!session.tabs.isEmpty())
         restoreSession(session);
@@ -128,8 +146,23 @@ MainWindow::MainWindow(QWidget *parent)
         m_tabs->addTab(new WelcomeWidget(this), QStringLiteral("Welcome"));
 }
 
+MainWindow::~MainWindow()
+{
+    s_windows.removeOne(this);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (m_secondary && !s_quitting && m_tabs->count() > 0) {
+        const auto answer = QMessageBox::question(this, QStringLiteral("Close Window"),
+                                                  QStringLiteral("Close this window and end its %1 tab(s)?\n\n(Use \"Move Tab to Main Window\" in the tab menu to keep a tab.)")
+                                                      .arg(m_tabs->count()));
+        if (answer != QMessageBox::Yes) {
+            event->ignore();
+            return;
+        }
+    }
+
     // Open SFTP file editors with unsaved changes get asked first (they're
     // separate windows owned by this one, so they'd otherwise just vanish
     // with it). Cancelling any of them cancels quitting.
@@ -140,7 +173,16 @@ void MainWindow::closeEvent(QCloseEvent *event)
         }
     }
 
-    SessionStore::save(captureSession());
+    if (!m_secondary) {
+        SessionStore::save(captureSession());
+        // Detached windows' tabs were saved above along with ours.
+        s_quitting = true;
+        const QList<MainWindow *> others = s_windows;
+        for (MainWindow *other : others) {
+            if (other != this)
+                other->close();
+        }
+    }
     QMainWindow::closeEvent(event);
 }
 
@@ -186,6 +228,14 @@ void MainWindow::createMenus()
     QAction *sshAction = connectionMenu->addAction(QStringLiteral("New SS&H Connection..."));
     registerCommand(QStringLiteral("connection.newSsh"), sshAction);
     connect(sshAction, &QAction::triggered, this, &MainWindow::newSshConnection);
+
+    QAction *vncAction = connectionMenu->addAction(QStringLiteral("New &VNC Connection..."));
+    registerCommand(QStringLiteral("connection.newVnc"), vncAction);
+    connect(vncAction, &QAction::triggered, this, &MainWindow::newVncConnection);
+
+    QAction *rdpAction = connectionMenu->addAction(QStringLiteral("New &RDP Connection..."));
+    registerCommand(QStringLiteral("connection.newRdp"), rdpAction);
+    connect(rdpAction, &QAction::triggered, this, &MainWindow::newRdpConnection);
 
     connectionMenu->addSeparator();
 
@@ -481,6 +531,51 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::runSshDialog()
     return result;
 }
 
+std::optional<MainWindow::NewConnectionResult> MainWindow::runVncDialog()
+{
+    VncConnectDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted)
+        return std::nullopt;
+
+    const VncConnectionSettings settings = dialog.settings();
+    if (settings.host.isEmpty())
+        return std::nullopt;
+
+    const QString title = QStringLiteral("%1:%2").arg(settings.host).arg(settings.port);
+
+    ConnectionProfile snapshot;
+    snapshot.type = ConnectionProfile::Type::Vnc;
+    snapshot.name = title;
+    snapshot.vnc = settings;
+
+    NewConnectionResult result{new VncTransport(settings), title, [settings] { return new VncTransport(settings); }};
+    result.snapshot = snapshot;
+    return result;
+}
+
+std::optional<MainWindow::NewConnectionResult> MainWindow::runRdpDialog()
+{
+    RdpConnectDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted)
+        return std::nullopt;
+
+    const RdpConnectionSettings settings = dialog.settings();
+    if (settings.host.isEmpty())
+        return std::nullopt;
+
+    const QString title = QStringLiteral("%1:%2").arg(settings.host).arg(settings.port);
+
+    ConnectionProfile snapshot;
+    snapshot.type = ConnectionProfile::Type::Rdp;
+    snapshot.name = title;
+    snapshot.rdp = settings;
+
+    const auto shared = std::make_shared<RdpConnectionSettings>(settings);
+    NewConnectionResult result{new RdpTransport(shared), title, [shared] { return new RdpTransport(shared); }};
+    result.snapshot = snapshot;
+    return result;
+}
+
 std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(const ConnectionProfile &profile)
 {
     switch (profile.type) {
@@ -523,6 +618,18 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(cons
         result->snapshot = profile;
         return result;
     }
+    case ConnectionProfile::Type::Vnc: {
+        const VncConnectionSettings s = profile.vnc;
+        NewConnectionResult result{new VncTransport(s), profile.name, [s] { return new VncTransport(s); }, profile.autoReconnect};
+        result.snapshot = profile;
+        return result;
+    }
+    case ConnectionProfile::Type::Rdp: {
+        const auto shared = std::make_shared<RdpConnectionSettings>(profile.rdp);
+        NewConnectionResult result{new RdpTransport(shared), profile.name, [shared] { return new RdpTransport(shared); }, profile.autoReconnect};
+        result.snapshot = profile;
+        return result;
+    }
     }
     Q_UNREACHABLE();
 }
@@ -545,6 +652,18 @@ void MainWindow::newSshConnection()
         addTerminalTab(*result);
 }
 
+void MainWindow::newRdpConnection()
+{
+    if (auto result = runRdpDialog())
+        addTerminalTab(*result);
+}
+
+void MainWindow::newVncConnection()
+{
+    if (auto result = runVncDialog())
+        addTerminalTab(*result);
+}
+
 void MainWindow::openProfile(const ConnectionProfile &profile)
 {
     if (auto result = resultForProfile(profile))
@@ -555,7 +674,26 @@ TerminalView *MainWindow::makeView(const NewConnectionResult &result)
 {
     auto *view = new TerminalView(result.transport, result.recreate, result.sshSettings, result.snapshot, nullptr);
     view->setAutoReconnectEnabled(result.autoReconnect);
+    wireView(view);
+    return view;
+}
 
+void MainWindow::pruneSftpSessions()
+{
+    QList<SshConnectionSettings> inUse;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        for (TerminalView *view : collectViews(m_tabs->widget(i))) {
+            if (view->sshSettings())
+                inUse.append(*view->sshSettings());
+        }
+    }
+    m_sftpDock->keepOnly(inUse);
+}
+
+void MainWindow::wireView(TerminalView *view)
+{
+    // A closed pane's SFTP session need not be kept (checked after it is gone).
+    connect(view, &QObject::destroyed, this, [this] { QTimer::singleShot(0, this, &MainWindow::pruneSftpSessions); });
     connect(view, &TerminalView::errorOccurred, this, [this, view](const QString &message) {
         const int index = m_tabs->indexOf(view);
         const QString title = index >= 0 ? m_tabs->tabText(index) : view->windowTitle();
@@ -574,8 +712,6 @@ TerminalView *MainWindow::makeView(const NewConnectionResult &result)
         if (QWidget *root = tabRootOf(view))
             updateTabIcon(root);
     });
-
-    return view;
 }
 
 void MainWindow::showPaneContextMenu(TerminalView *view, const QPoint &globalPos)
@@ -707,6 +843,24 @@ void MainWindow::changePaneSettings(TerminalView *view)
         profile.localShell = shell.trimmed();
         break;
     }
+    case ConnectionProfile::Type::Vnc: {
+        VncConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change VNC Settings"));
+        dialog.setSettings(profile.vnc);
+        if (dialog.exec() != QDialog::Accepted || dialog.settings().host.isEmpty())
+            return;
+        profile.vnc = dialog.settings();
+        break;
+    }
+    case ConnectionProfile::Type::Rdp: {
+        RdpConnectDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("Change RDP Settings"));
+        dialog.setSettings(profile.rdp);
+        if (dialog.exec() != QDialog::Accepted || dialog.settings().host.isEmpty())
+            return;
+        profile.rdp = dialog.settings();
+        break;
+    }
     }
 
     // Keep an auto-generated name (user@host, COM3, host:port) in step with
@@ -718,6 +872,8 @@ void MainWindow::changePaneSettings(TerminalView *view)
     case ConnectionProfile::Type::Telnet: newAutoName = QStringLiteral("%1:%2").arg(profile.telnetHost).arg(profile.telnetPort); break;
     case ConnectionProfile::Type::Ssh: newAutoName = QStringLiteral("%1@%2").arg(profile.ssh.username, profile.ssh.host); break;
     case ConnectionProfile::Type::Local: break;
+    case ConnectionProfile::Type::Vnc: newAutoName = QStringLiteral("%1:%2").arg(profile.vnc.host).arg(profile.vnc.port); break;
+    case ConnectionProfile::Type::Rdp: newAutoName = QStringLiteral("%1:%2").arg(profile.rdp.host).arg(profile.rdp.port); break;
     }
     const int tabIndex = m_tabs->indexOf(view);
     const bool nameWasAuto = tabIndex >= 0 && m_tabs->tabText(tabIndex) == oldAutoName;
@@ -771,6 +927,10 @@ void MainWindow::onFocusChanged(QWidget * /*old*/, QWidget *now)
             break;
         }
     }
+
+    // Every window hears every focus change; a pane in another window is not ours.
+    if (focusedView && !tabRootOf(focusedView))
+        focusedView = nullptr;
 
     // m_terminalMenuAction reflects real, current focus (cleared the
     // instant focus leaves every TerminalView) - unlike m_activeView below,
@@ -1123,6 +1283,9 @@ void MainWindow::closeTab(int index)
 
     m_tabs->removeTab(index);
     delete root; // cascades: destroys every TerminalView (and its Transport) under it
+
+    if (m_secondary && m_tabs->count() == 0)
+        QTimer::singleShot(0, this, &MainWindow::close);
 }
 
 void MainWindow::onCurrentTabChanged(int index)
@@ -1172,6 +1335,15 @@ void MainWindow::showTabContextMenu(const QPoint &pos)
 
     QAction *renameAction = menu.addAction(QStringLiteral("Rename Tab..."));
     connect(renameAction, &QAction::triggered, this, [this, index] { renameTab(index); });
+
+    menu.addSeparator();
+    if (m_secondary) {
+        QAction *attachAction = menu.addAction(QStringLiteral("Move Tab to Main Window"));
+        connect(attachAction, &QAction::triggered, this, [this, index] { moveTabToPrimary(index); });
+    } else if (m_tabs->count() > 1) {
+        QAction *detachAction = menu.addAction(QStringLiteral("Detach Tab to New Window"));
+        connect(detachAction, &QAction::triggered, this, [this, index] { detachTab(index); });
+    }
 
     QAction *closeTabAction = menu.addAction(QStringLiteral("Close Tab"));
     connect(closeTabAction, &QAction::triggered, this, [this, index] { closeTab(index); });
@@ -1256,12 +1428,77 @@ SessionState MainWindow::captureSession() const
     state.windowState = saveState();
     state.currentTabIndex = m_tabs->currentIndex();
 
-    for (int i = 0; i < m_tabs->count(); ++i) {
-        if (std::optional<SessionNode> node = captureNode(m_tabs->widget(i)))
-            state.tabs.append(SessionTab{m_tabs->tabText(i), *node});
+    // Tabs detached into other windows are restored as ordinary tabs here.
+    for (const MainWindow *window : s_windows) {
+        if (window != this && window->m_secondary == false)
+            continue;
+        for (int i = 0; i < window->m_tabs->count(); ++i) {
+            if (std::optional<SessionNode> node = captureNode(window->m_tabs->widget(i)))
+                state.tabs.append(SessionTab{window->m_tabs->tabText(i), *node});
+        }
     }
 
     return state;
+}
+
+void MainWindow::detachTab(int index)
+{
+    if (index < 0 || m_tabs->count() < 2)
+        return;
+
+    auto *window = new MainWindow(s_windows.isEmpty() ? this : s_windows.first());
+    window->setAttribute(Qt::WA_DeleteOnClose);
+    window->resize(size());
+    window->move(pos() + QPoint(40, 40));
+    transferTab(index, window);
+    window->show();
+}
+
+void MainWindow::moveTabToPrimary(int index)
+{
+    MainWindow *primary = s_windows.isEmpty() ? nullptr : s_windows.first();
+    if (!primary || primary == this)
+        return;
+    transferTab(index, primary);
+    primary->raise();
+    primary->activateWindow();
+}
+
+void MainWindow::transferTab(int index, MainWindow *dest)
+{
+    QWidget *root = m_tabs->widget(index);
+    if (!root || dest == this)
+        return;
+
+    const QString title = m_tabs->tabText(index);
+    const QIcon icon = m_tabs->tabIcon(index);
+
+    // Panes were wired to this window (status bar, context menu, drag and
+    // drop, tab icon); dest wires them again to itself.
+    for (TerminalView *view : collectViews(root)) {
+        view->disconnect(this);
+        if (view == m_activeView)
+            m_activeView = nullptr;
+    }
+
+    m_tabs->removeTab(index);
+    root->setParent(nullptr);
+    dest->acceptTab(root, title, icon);
+
+    if (m_secondary && m_tabs->count() == 0)
+        QTimer::singleShot(0, this, &MainWindow::close);
+}
+
+void MainWindow::acceptTab(QWidget *root, const QString &title, const QIcon &icon)
+{
+    for (TerminalView *view : collectViews(root))
+        wireView(view);
+
+    const int index = m_tabs->addTab(root, icon, title);
+    m_tabs->setCurrentIndex(index);
+    root->show();
+    updateTabIcon(root);
+    updatePaneFrames();
 }
 
 QWidget *MainWindow::buildNode(const SessionNode &node)

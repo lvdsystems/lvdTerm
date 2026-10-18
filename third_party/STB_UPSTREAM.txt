@@ -1,0 +1,4 @@
+source=https://github.com/nothings/stb.git
+file=stb_image.h v2.30
+commit=2c980bb59875b0d32144a71867fbdebb2f77cd20 (master when vendored, 2026-10-18)
+license=MIT or public domain (see the end of stb_image.h)
