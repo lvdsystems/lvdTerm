@@ -27,9 +27,10 @@ set(LVD_FRDP_ARGS
     -DBUILD_SHARED_LIBS=OFF
     -DBUILD_TESTING=OFF
     -DBUILD_TESTING_INTERNAL=OFF
-    # Protocol core only.
-    -DWITH_CLIENT=OFF -DWITH_CLIENT_COMMON=OFF -DWITH_CLIENT_CHANNELS=OFF
-    -DWITH_SERVER=OFF -DWITH_SERVER_CHANNELS=OFF -DWITH_CHANNELS=OFF
+    # Protocol core plus one virtual channel (the vendored tree only contains
+    # channels/cliprdr: the clipboard). No client or server programs.
+    -DWITH_CLIENT=OFF -DWITH_CLIENT_COMMON=OFF -DWITH_CLIENT_CHANNELS=ON
+    -DWITH_SERVER=OFF -DWITH_SERVER_CHANNELS=OFF -DWITH_CHANNELS=ON
     -DWITH_SHADOW=OFF -DWITH_PROXY=OFF -DWITH_SAMPLE=OFF
     -DWITH_MANPAGES=OFF -DWITH_WINPR_TOOLS=OFF
     # No optional codecs / platform back ends - each of these would be one
@@ -78,15 +79,16 @@ endif()
 
 set(LVD_FRDP_FREERDP_LIB "${LVD_FRDP_BINARY}/libfreerdp/libfreerdp3.a")
 set(LVD_FRDP_WINPR_LIB "${LVD_FRDP_BINARY}/winpr/libwinpr/libwinpr3.a")
+set(LVD_FRDP_CHANNELS_LIB "${LVD_FRDP_BINARY}/channels/liblvd-channels-client.a")
 
 ExternalProject_Add(lvd_freerdp_build
     SOURCE_DIR "${LVD_FRDP_SOURCE}"
     BINARY_DIR "${LVD_FRDP_BINARY}"
     CMAKE_ARGS ${LVD_FRDP_ARGS}
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target freerdp winpr
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target freerdp winpr lvd-channels-client
     INSTALL_COMMAND ""
     DEPENDS ${LVD_FRDP_DEPENDS}
-    BUILD_BYPRODUCTS "${LVD_FRDP_FREERDP_LIB}" "${LVD_FRDP_WINPR_LIB}"
+    BUILD_BYPRODUCTS "${LVD_FRDP_FREERDP_LIB}" "${LVD_FRDP_WINPR_LIB}" "${LVD_FRDP_CHANNELS_LIB}"
     USES_TERMINAL_BUILD OFF
 )
 
@@ -102,7 +104,7 @@ if(WIN32)
     target_compile_definitions(lvd_freerdp INTERFACE FREERDP_EXPORTS WINPR_EXPORTS)
     find_package(OpenSSL REQUIRED)
     target_link_libraries(lvd_freerdp INTERFACE
-        "${LVD_FRDP_FREERDP_LIB}" "${LVD_FRDP_WINPR_LIB}" lvd_zlib
+        "${LVD_FRDP_CHANNELS_LIB}" "${LVD_FRDP_FREERDP_LIB}" "${LVD_FRDP_WINPR_LIB}" lvd_zlib
         OpenSSL::SSL OpenSSL::Crypto
         ws2_32 crypt32 bcrypt ncrypt secur32 rpcrt4 ole32 oleaut32 shell32 user32
         advapi32 winmm iphlpapi wtsapi32 userenv dbghelp shlwapi gdi32 ntdll)
@@ -110,6 +112,6 @@ else()
     find_package(OpenSSL REQUIRED)
     find_package(ZLIB REQUIRED)
     target_link_libraries(lvd_freerdp INTERFACE
-        "${LVD_FRDP_FREERDP_LIB}" "${LVD_FRDP_WINPR_LIB}"
+        "${LVD_FRDP_CHANNELS_LIB}" "${LVD_FRDP_FREERDP_LIB}" "${LVD_FRDP_WINPR_LIB}"
         OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB pthread dl m)
 endif()

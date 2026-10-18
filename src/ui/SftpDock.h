@@ -62,6 +62,12 @@ public:
     // there's nothing it could act on.
     void setActiveConnection(const std::optional<SshConnectionSettings> &settings);
 
+    // Sessions of panes that are not the active one stay connected ("parked"),
+    // so switching back to a pane does not log in to its host again. Called by
+    // MainWindow after panes close: parked sessions of connections that no pane
+    // uses any more are disconnected.
+    void keepOnly(const QList<SshConnectionSettings> &inUse);
+
 private slots:
     void onConnected(const QString &homePath);
     void onConnectFailed(const QString &message);
@@ -107,6 +113,9 @@ private:
     void updatePathLabel();
     void setStatus(const QString &text);
     void teardownSession();
+    void parkSession();                   // keeps a connected session for later, see setActiveConnection()
+    void attachSession(SftpSession *session); // wires a session's signals to this dock
+    static QString connectionKey(const SshConnectionSettings &settings);
     void openInEditor(const QModelIndex &file); // see SftpFileEditor
     bool dropsAccepted() const; // connected, with a folder to drop into
     void showDropOverlay(const QString &targetDir); // the "+ Drop to upload" veil, see DropOverlay
@@ -125,6 +134,14 @@ private:
 
     SftpSession *m_session = nullptr;
     std::optional<SshConnectionSettings> m_settings;
+
+    // Connected sessions of connections that are not currently shown.
+    struct Parked
+    {
+        SftpSession *session = nullptr;
+        QString home;
+    };
+    QHash<QString, Parked> m_parked;
 
     // Browser-style history of folders visited (see enterDirectory());
     // an invalid index is the connection's home/root listing.

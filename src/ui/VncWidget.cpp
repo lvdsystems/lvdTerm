@@ -53,6 +53,17 @@ quint32 specialKeysym(int key)
 VncWidget::VncWidget(QWidget *parent)
     : QWidget(parent)
 {
+    // Whatever is copied locally is offered to the remote machine right away
+    // (not only when this pane gets focus), so Ctrl+V there pastes it.
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, [this] {
+        if (!m_client || !m_client->isReady())
+            return;
+        const QString text = QGuiApplication::clipboard()->text();
+        if (!text.isEmpty() && text != m_lastSentClipboard) {
+            m_lastSentClipboard = text;
+            m_client->sendClipboardText(text);
+        }
+    });
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     setAttribute(Qt::WA_OpaquePaintEvent);

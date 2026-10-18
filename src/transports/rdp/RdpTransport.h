@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "core/Transport.h"
 #include "RdpConnectionSettings.h"
 
@@ -15,6 +17,10 @@ class RdpTransport : public Transport
 
 public:
     explicit RdpTransport(RdpConnectionSettings settings, QObject *parent = nullptr);
+    // Panes share one settings object across reconnects, so credentials typed
+    // at the prompt are remembered (in memory only) instead of asked for again
+    // every time the session drops and comes back.
+    explicit RdpTransport(std::shared_ptr<RdpConnectionSettings> settings, QObject *parent = nullptr);
 
     void connectToHost() override;
     void disconnectFromHost() override;
@@ -26,6 +32,6 @@ public slots:
     void write(const QByteArray &) override {}
 
 private:
-    RdpConnectionSettings m_settings;
+    std::shared_ptr<RdpConnectionSettings> m_settings;
     RdpClient *m_client = nullptr;
 };

@@ -570,7 +570,8 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::runRdpDialog()
     snapshot.name = title;
     snapshot.rdp = settings;
 
-    NewConnectionResult result{new RdpTransport(settings), title, [settings] { return new RdpTransport(settings); }};
+    const auto shared = std::make_shared<RdpConnectionSettings>(settings);
+    NewConnectionResult result{new RdpTransport(shared), title, [shared] { return new RdpTransport(shared); }};
     result.snapshot = snapshot;
     return result;
 }
@@ -624,8 +625,8 @@ std::optional<MainWindow::NewConnectionResult> MainWindow::resultForProfile(cons
         return result;
     }
     case ConnectionProfile::Type::Rdp: {
-        const RdpConnectionSettings s = profile.rdp;
-        NewConnectionResult result{new RdpTransport(s), profile.name, [s] { return new RdpTransport(s); }, profile.autoReconnect};
+        const auto shared = std::make_shared<RdpConnectionSettings>(profile.rdp);
+        NewConnectionResult result{new RdpTransport(shared), profile.name, [shared] { return new RdpTransport(shared); }, profile.autoReconnect};
         result.snapshot = profile;
         return result;
     }
@@ -677,8 +678,22 @@ TerminalView *MainWindow::makeView(const NewConnectionResult &result)
     return view;
 }
 
+void MainWindow::pruneSftpSessions()
+{
+    QList<SshConnectionSettings> inUse;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        for (TerminalView *view : collectViews(m_tabs->widget(i))) {
+            if (view->sshSettings())
+                inUse.append(*view->sshSettings());
+        }
+    }
+    m_sftpDock->keepOnly(inUse);
+}
+
 void MainWindow::wireView(TerminalView *view)
 {
+    // A closed pane's SFTP session need not be kept (checked after it is gone).
+    connect(view, &QObject::destroyed, this, [this] { QTimer::singleShot(0, this, &MainWindow::pruneSftpSessions); });
     connect(view, &TerminalView::errorOccurred, this, [this, view](const QString &message) {
         const int index = m_tabs->indexOf(view);
         const QString title = index >= 0 ? m_tabs->tabText(index) : view->windowTitle();

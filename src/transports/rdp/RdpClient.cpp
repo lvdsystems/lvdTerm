@@ -5,7 +5,13 @@
 #include <QMetaObject>
 #include <QThread>
 
+#include <freerdp/addin.h>
+#include <freerdp/channels/channels.h>
+#include <freerdp/channels/cliprdr.h>
+#include <freerdp/client/channels.h>
+#include <freerdp/client/cliprdr.h>
 #include <freerdp/codec/color.h>
+#include <freerdp/event.h>
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
@@ -27,6 +33,7 @@ struct InputEvent
         Mouse,
         Scancode,
         Unicode,
+        ClipboardChanged,
     };
     Kind kind = Kind::Mouse;
     quint16 flags = 0;
@@ -77,6 +84,16 @@ public:
     }
 
     // FreeRDP callbacks (see run()).
+    static BOOL loadChannels(freerdp *instance);
+    static void onChannelConnected(void *context, const ChannelConnectedEventArgs *e);
+    static void onChannelDisconnected(void *context, const ChannelDisconnectedEventArgs *e);
+    static UINT clipMonitorReady(CliprdrClientContext *clip, const CLIPRDR_MONITOR_READY *ready);
+    static UINT clipServerCapabilities(CliprdrClientContext *clip, const CLIPRDR_CAPABILITIES *caps);
+    static UINT clipServerFormatList(CliprdrClientContext *clip, const CLIPRDR_FORMAT_LIST *list);
+    static UINT clipServerFormatListResponse(CliprdrClientContext *clip, const CLIPRDR_FORMAT_LIST_RESPONSE *response);
+    static UINT clipServerFormatDataRequest(CliprdrClientContext *clip, const CLIPRDR_FORMAT_DATA_REQUEST *request);
+    static UINT clipServerFormatDataResponse(CliprdrClientContext *clip, const CLIPRDR_FORMAT_DATA_RESPONSE *response);
+    void sendClipboardFormats(); // session thread: tells the server we have text to paste
     static BOOL postConnect(freerdp *instance);
     static void postDisconnect(freerdp *instance);
     static BOOL endPaint(rdpContext *context);
@@ -111,6 +128,9 @@ private:
 
     std::mutex m_inputMutex;
     std::deque<InputEvent> m_input;
+
+    CliprdrClientContext *m_cliprdr = nullptr; // session thread only
+    bool m_clipboardReady = false;             // the server finished the clipboard handshake
 
     friend class RdpClient;
 };
@@ -170,6 +190,7 @@ void RdpThread::run()
     instance->ContextSize = sizeof(Context);
     instance->PostConnect = &RdpThread::postConnect;
     instance->PostDisconnect = &RdpThread::postDisconnect;
+    instance->LoadChannels = &RdpThread::loadChannels;
     instance->AuthenticateEx = &RdpThread::authenticate;
 
     if (!freerdp_context_new(instance)) {
@@ -181,6 +202,8 @@ void RdpThread::run()
     rdpContext *context = instance->context;
     reinterpret_cast<Context *>(context)->thread = this;
     m_context = context;
+    PubSub_SubscribeChannelConnected(context->pubSub, &RdpThread::onChannelConnected);
+    PubSub_SubscribeChannelDisconnected(context->pubSub, &RdpThread::onChannelDisconnected);
     applySettings(context->settings);
 
     QString failure;
@@ -212,11 +235,16 @@ void RdpThread::run()
             drainInput(context);
         }
         if (failure.isEmpty() && !m_stop) {
-            // Ended by the server: a normal logoff is not an error.
+            // Ended by the server. Always say why (it is what the pane shows
+            // while it reconnects): e.g. a Windows host that allows one session
+            // per account drops this one when the same account connects elsewhere.
             const UINT32 info = freerdp_error_info(instance);
-            if (info != ERRINFO_SUCCESS && info != ERRINFO_LOGOFF_BY_USER && info != ERRINFO_RPC_INITIATED_LOGOFF
-                && info != ERRINFO_RPC_INITIATED_DISCONNECT)
-                failure = errorText(context, instance);
+            if (info != ERRINFO_SUCCESS) {
+                const char *text = freerdp_get_error_info_string(info);
+                failure = QStringLiteral("The server ended the session: %1").arg(QString::fromUtf8(text && *text ? text : "unknown reason"));
+            } else {
+                failure = QStringLiteral("The server closed the connection");
+            }
         }
         freerdp_disconnect(instance);
     }
@@ -268,8 +296,191 @@ void RdpThread::drainInput(rdpContext *context)
         case InputEvent::Kind::Unicode:
             freerdp_input_send_unicode_keyboard_event(input, e.flags, e.code);
             break;
+        case InputEvent::Kind::ClipboardChanged:
+            sendClipboardFormats();
+            break;
         }
     }
+}
+
+namespace
+{
+constexpr UINT32 kCfText = 1;
+constexpr UINT32 kCfUnicodeText = 13;
+} // namespace
+
+// Loads the clipboard channel (the only one in this build), as FreeRDP's own
+// client does for "/clipboard".
+BOOL RdpThread::loadChannels(freerdp *instance)
+{
+    static std::atomic<bool> providerRegistered{false};
+    if (!providerRegistered.exchange(true)) {
+        if (freerdp_register_addin_provider(freerdp_channels_load_static_addin_entry, 0) != CHANNEL_RC_OK)
+            return FALSE;
+    }
+
+    rdpContext *context = instance->context;
+    rdpSettings *settings = context->settings;
+    freerdp_settings_set_bool(settings, FreeRDP_RedirectClipboard, TRUE);
+
+    const char *const params[] = {CLIPRDR_SVC_CHANNEL_NAME};
+    if (!freerdp_static_channel_collection_find(settings, params[0])) {
+        ADDIN_ARGV *args = freerdp_addin_argv_new(1, params);
+        if (!args || !freerdp_static_channel_collection_add(settings, args))
+            return FALSE;
+    }
+
+    // The clipboard channel has the "Ex" entry point.
+    PVIRTUALCHANNELENTRY entry =
+        freerdp_load_channel_addin_entry(CLIPRDR_SVC_CHANNEL_NAME, nullptr, nullptr, FREERDP_ADDIN_CHANNEL_STATIC | FREERDP_ADDIN_CHANNEL_ENTRYEX);
+    if (!entry)
+        return FALSE;
+    return freerdp_channels_client_load_ex(context->channels, settings, reinterpret_cast<PVIRTUALCHANNELENTRYEX>(entry), settings) == 0;
+}
+
+void RdpThread::onChannelConnected(void *context, const ChannelConnectedEventArgs *e)
+{
+    if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) != 0)
+        return;
+    auto *clip = static_cast<CliprdrClientContext *>(e->pInterface);
+    RdpThread *self = threadOf(static_cast<rdpContext *>(context));
+    clip->custom = self;
+    clip->MonitorReady = &RdpThread::clipMonitorReady;
+    clip->ServerCapabilities = &RdpThread::clipServerCapabilities;
+    clip->ServerFormatList = &RdpThread::clipServerFormatList;
+    clip->ServerFormatListResponse = &RdpThread::clipServerFormatListResponse;
+    clip->ServerFormatDataRequest = &RdpThread::clipServerFormatDataRequest;
+    clip->ServerFormatDataResponse = &RdpThread::clipServerFormatDataResponse;
+    self->m_cliprdr = clip;
+}
+
+void RdpThread::onChannelDisconnected(void *context, const ChannelDisconnectedEventArgs *e)
+{
+    if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) != 0)
+        return;
+    RdpThread *self = threadOf(static_cast<rdpContext *>(context));
+    self->m_cliprdr = nullptr;
+    self->m_clipboardReady = false;
+}
+
+UINT RdpThread::clipServerCapabilities(CliprdrClientContext *, const CLIPRDR_CAPABILITIES *)
+{
+    return CHANNEL_RC_OK;
+}
+
+UINT RdpThread::clipMonitorReady(CliprdrClientContext *clip, const CLIPRDR_MONITOR_READY *)
+{
+    auto *self = static_cast<RdpThread *>(clip->custom);
+
+    CLIPRDR_GENERAL_CAPABILITY_SET general = {};
+    general.capabilitySetType = CB_CAPSTYPE_GENERAL;
+    general.capabilitySetLength = CB_CAPSTYPE_GENERAL_LEN;
+    general.version = CB_CAPS_VERSION_2;
+    general.generalFlags = CB_USE_LONG_FORMAT_NAMES;
+    CLIPRDR_CAPABILITIES capabilities = {};
+    capabilities.cCapabilitiesSets = 1;
+    capabilities.capabilitySets = reinterpret_cast<CLIPRDR_CAPABILITY_SET *>(&general);
+    UINT rc = clip->ClientCapabilities(clip, &capabilities);
+    if (rc != CHANNEL_RC_OK)
+        return rc;
+
+    self->m_clipboardReady = true;
+    self->sendClipboardFormats();
+    return CHANNEL_RC_OK;
+}
+
+void RdpThread::sendClipboardFormats()
+{
+    if (!m_cliprdr || !m_clipboardReady || m_client->localClipboardText().isEmpty())
+        return;
+
+    CLIPRDR_FORMAT formats[1] = {};
+    formats[0].formatId = kCfUnicodeText;
+    formats[0].formatName = nullptr;
+    CLIPRDR_FORMAT_LIST list = {};
+    list.common.msgType = CB_FORMAT_LIST;
+    list.numFormats = 1;
+    list.formats = formats;
+    m_cliprdr->ClientFormatList(m_cliprdr, &list);
+}
+
+// The remote side copied something: ask for its text if it has any.
+UINT RdpThread::clipServerFormatList(CliprdrClientContext *clip, const CLIPRDR_FORMAT_LIST *list)
+{
+    bool hasUnicode = false;
+    bool hasText = false;
+    for (UINT32 i = 0; i < list->numFormats; ++i) {
+        hasUnicode = hasUnicode || list->formats[i].formatId == kCfUnicodeText;
+        hasText = hasText || list->formats[i].formatId == kCfText;
+    }
+
+    CLIPRDR_FORMAT_LIST_RESPONSE response = {};
+    response.common.msgType = CB_FORMAT_LIST_RESPONSE;
+    response.common.msgFlags = CB_RESPONSE_OK;
+    UINT rc = clip->ClientFormatListResponse(clip, &response);
+    if (rc != CHANNEL_RC_OK || (!hasUnicode && !hasText))
+        return rc;
+
+    CLIPRDR_FORMAT_DATA_REQUEST request = {};
+    request.common.msgType = CB_FORMAT_DATA_REQUEST;
+    request.requestedFormatId = hasUnicode ? kCfUnicodeText : kCfText;
+    clip->lastRequestedFormatId = request.requestedFormatId;
+    return clip->ClientFormatDataRequest(clip, &request);
+}
+
+UINT RdpThread::clipServerFormatListResponse(CliprdrClientContext *, const CLIPRDR_FORMAT_LIST_RESPONSE *)
+{
+    return CHANNEL_RC_OK;
+}
+
+// The remote side pastes: hand it our local clipboard text.
+UINT RdpThread::clipServerFormatDataRequest(CliprdrClientContext *clip, const CLIPRDR_FORMAT_DATA_REQUEST *request)
+{
+    auto *self = static_cast<RdpThread *>(clip->custom);
+    QString text = self->m_client->localClipboardText();
+    // Windows clipboard text has CRLF line ends.
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).replace(QLatin1Char('\n'), QStringLiteral("\r\n"));
+
+    QByteArray data;
+    if (request->requestedFormatId == kCfUnicodeText) {
+        data = QByteArray(reinterpret_cast<const char *>(text.utf16()), static_cast<qsizetype>((text.size() + 1) * 2));
+    } else if (request->requestedFormatId == kCfText) {
+        data = text.toLocal8Bit();
+        data.append('\0');
+    }
+
+    CLIPRDR_FORMAT_DATA_RESPONSE response = {};
+    response.common.msgType = CB_FORMAT_DATA_RESPONSE;
+    if (data.isEmpty()) {
+        response.common.msgFlags = CB_RESPONSE_FAIL;
+    } else {
+        response.common.msgFlags = CB_RESPONSE_OK;
+        response.common.dataLen = static_cast<UINT32>(data.size());
+        response.requestedFormatData = reinterpret_cast<const BYTE *>(data.constData());
+    }
+    return clip->ClientFormatDataResponse(clip, &response);
+}
+
+// The text we asked for (see clipServerFormatList()) arrived.
+UINT RdpThread::clipServerFormatDataResponse(CliprdrClientContext *clip, const CLIPRDR_FORMAT_DATA_RESPONSE *response)
+{
+    auto *self = static_cast<RdpThread *>(clip->custom);
+    if (!(response->common.msgFlags & CB_RESPONSE_OK) || !response->requestedFormatData)
+        return CHANNEL_RC_OK;
+
+    QString text;
+    if (clip->lastRequestedFormatId == kCfUnicodeText) {
+        text = QString::fromUtf16(reinterpret_cast<const char16_t *>(response->requestedFormatData), static_cast<qsizetype>(response->common.dataLen / 2));
+    } else {
+        text = QString::fromLocal8Bit(reinterpret_cast<const char *>(response->requestedFormatData), static_cast<qsizetype>(response->common.dataLen));
+    }
+    // The text is NUL terminated.
+    const qsizetype nul = text.indexOf(QChar(0));
+    if (nul >= 0)
+        text.truncate(nul);
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    emit self->m_client->remoteClipboardText(text);
+    return CHANNEL_RC_OK;
 }
 
 BOOL RdpThread::postConnect(freerdp *instance)
@@ -380,6 +591,27 @@ BOOL RdpThread::authenticate(freerdp *instance, char **username, char **password
 RdpClient::RdpClient(QObject *parent)
     : QObject(parent)
 {
+}
+
+QString RdpClient::localClipboardText() const
+{
+    std::lock_guard<std::mutex> lock(m_clipboardMutex);
+    return m_localClipboard;
+}
+
+void RdpClient::setLocalClipboardText(const QString &text)
+{
+    {
+        std::lock_guard<std::mutex> lock(m_clipboardMutex);
+        if (text == m_localClipboard)
+            return;
+        m_localClipboard = text;
+    }
+    if (!m_thread)
+        return;
+    InputEvent e;
+    e.kind = InputEvent::Kind::ClipboardChanged;
+    m_thread->push(e);
 }
 
 RdpClient::~RdpClient()

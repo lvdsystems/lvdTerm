@@ -1,0 +1,770 @@
+/**
+ * FreeRDP: A Remote Desktop Protocol Implementation
+ * Channel Addins
+ *
+ * Copyright 2012 Marc-Andre Moreau <marcandre.moreau@gmail.com>
+ * Copyright 2015 Thincast Technologies GmbH
+ * Copyright 2015 DI (FH) Martin Haimberger <martin.haimberger@thincast.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <freerdp/config.h>
+
+#include <winpr/crt.h>
+#include <winpr/assert.h>
+#include <winpr/path.h>
+#include <winpr/string.h>
+#include <winpr/file.h>
+#include <winpr/synch.h>
+#include <winpr/library.h>
+#include <winpr/collections.h>
+
+#include <freerdp/freerdp.h>
+#include <freerdp/addin.h>
+#include <freerdp/build-config.h>
+#include <freerdp/client/channels.h>
+
+#include "tables.h"
+
+#include "addin.h"
+
+#include <freerdp/channels/log.h>
+#define TAG CHANNELS_TAG("addin")
+
+extern const STATIC_ENTRY_TABLE CLIENT_STATIC_ENTRY_TABLES[];
+
+static void* freerdp_channels_find_static_entry_in_table(const STATIC_ENTRY_TABLE* table,
+                                                         const char* identifier)
+{
+	size_t index = 0;
+	const STATIC_ENTRY* pEntry = &table->table.cse[index++];
+
+	while (pEntry->entry != nullptr)
+	{
+		static_entry_fn_t fkt = pEntry->entry;
+		if (strcmp(pEntry->name, identifier) == 0)
+			return WINPR_FUNC_PTR_CAST(fkt, void*);
+
+		pEntry = &table->table.cse[index++];
+	}
+
+	return nullptr;
+}
+
+void* freerdp_channels_client_find_static_entry(const char* name, const char* identifier)
+{
+	size_t index = 0;
+	const STATIC_ENTRY_TABLE* pEntry = &CLIENT_STATIC_ENTRY_TABLES[index++];
+
+	while (pEntry->table.cse != nullptr)
+	{
+		if (strcmp(pEntry->name, name) == 0)
+		{
+			return freerdp_channels_find_static_entry_in_table(pEntry, identifier);
+		}
+
+		pEntry = &CLIENT_STATIC_ENTRY_TABLES[index++];
+	}
+
+	return nullptr;
+}
+
+extern const STATIC_ADDIN_TABLE CLIENT_STATIC_ADDIN_TABLE[];
+
+static FREERDP_ADDIN** freerdp_channels_list_client_static_addins(
+    WINPR_ATTR_UNUSED LPCSTR pszName, WINPR_ATTR_UNUSED LPCSTR pszSubsystem,
+    WINPR_ATTR_UNUSED LPCSTR pszType, WINPR_ATTR_UNUSED DWORD dwFlags)
+{
+	DWORD nAddins = 0;
+	FREERDP_ADDIN** ppAddins = nullptr;
+	const STATIC_SUBSYSTEM_ENTRY* subsystems = nullptr;
+	nAddins = 0;
+	ppAddins = (FREERDP_ADDIN**)calloc(128, sizeof(FREERDP_ADDIN*));
+
+	if (!ppAddins)
+	{
+		WLog_ERR(TAG, "calloc failed!");
+		return nullptr;
+	}
+
+	ppAddins[nAddins] = nullptr;
+
+	for (size_t i = 0; CLIENT_STATIC_ADDIN_TABLE[i].name != nullptr; i++)
+	{
+		FREERDP_ADDIN* pAddin = (FREERDP_ADDIN*)calloc(1, sizeof(FREERDP_ADDIN));
+		const STATIC_ADDIN_TABLE* table = &CLIENT_STATIC_ADDIN_TABLE[i];
+		if (!pAddin)
+		{
+			WLog_ERR(TAG, "calloc failed!");
+			goto error_out;
+		}
+
+		(void)sprintf_s(pAddin->cName, ARRAYSIZE(pAddin->cName), "%s", table->name);
+		pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
+		pAddin->dwFlags |= FREERDP_ADDIN_STATIC;
+		pAddin->dwFlags |= FREERDP_ADDIN_NAME;
+		ppAddins[nAddins++] = pAddin;
+		subsystems = table->table;
+
+		for (size_t j = 0; subsystems[j].name != nullptr; j++)
+		{
+			pAddin = (FREERDP_ADDIN*)calloc(1, sizeof(FREERDP_ADDIN));
+
+			if (!pAddin)
+			{
+				WLog_ERR(TAG, "calloc failed!");
+				goto error_out;
+			}
+
+			(void)sprintf_s(pAddin->cName, ARRAYSIZE(pAddin->cName), "%s", table->name);
+			(void)sprintf_s(pAddin->cSubsystem, ARRAYSIZE(pAddin->cSubsystem), "%s",
+			                subsystems[j].name);
+			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
+			pAddin->dwFlags |= FREERDP_ADDIN_STATIC;
+			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
+			pAddin->dwFlags |= FREERDP_ADDIN_SUBSYSTEM;
+			ppAddins[nAddins++] = pAddin;
+		}
+	}
+
+	return ppAddins;
+error_out:
+	freerdp_channels_addin_list_free(ppAddins);
+	return nullptr;
+}
+
+static HANDLE FindFirstFileUTF8(LPCSTR pszSearchPath, WIN32_FIND_DATAW* FindData)
+{
+	HANDLE hdl = INVALID_HANDLE_VALUE;
+	if (!pszSearchPath)
+		return hdl;
+	WCHAR* wpath = ConvertUtf8ToWCharAlloc(pszSearchPath, nullptr);
+	if (!wpath)
+		return hdl;
+
+	hdl = FindFirstFileW(wpath, FindData);
+	free(wpath);
+
+	return hdl;
+}
+
+static FREERDP_ADDIN** freerdp_channels_list_dynamic_addins(LPCSTR pszName, LPCSTR pszSubsystem,
+                                                            LPCSTR pszType,
+                                                            WINPR_ATTR_UNUSED DWORD dwFlags)
+{
+	int nDashes = 0;
+	LPCSTR pszAddinPath = FREERDP_ADDIN_PATH;
+	LPCSTR pszInstallPrefix = FREERDP_INSTALL_PREFIX;
+	const size_t cchAddinPath = strnlen(pszAddinPath, sizeof(FREERDP_ADDIN_PATH));
+	const size_t cchInstallPrefix = strnlen(pszInstallPrefix, sizeof(FREERDP_INSTALL_PREFIX));
+	const char* pszExtension = PathGetSharedLibraryExtensionA(0);
+	const size_t cchPattern = 128 + strnlen(pszExtension, MAX_PATH) + 2;
+	char* pszPattern = calloc(cchPattern + 1, sizeof(char));
+
+	if (!pszPattern)
+	{
+		WLog_ERR(TAG, "malloc failed!");
+		return nullptr;
+	}
+
+	if (pszName && pszSubsystem && pszType)
+	{
+		(void)sprintf_s(pszPattern, cchPattern, FREERDP_SHARED_LIBRARY_PREFIX "%s-client-%s-%s.%s",
+		                pszName, pszSubsystem, pszType, pszExtension);
+	}
+	else if (pszName && pszType)
+	{
+		(void)sprintf_s(pszPattern, cchPattern, FREERDP_SHARED_LIBRARY_PREFIX "%s-client-?-%s.%s",
+		                pszName, pszType, pszExtension);
+	}
+	else if (pszName)
+	{
+		(void)sprintf_s(pszPattern, cchPattern, FREERDP_SHARED_LIBRARY_PREFIX "%s-client*.%s",
+		                pszName, pszExtension);
+	}
+	else
+	{
+		(void)sprintf_s(pszPattern, cchPattern, FREERDP_SHARED_LIBRARY_PREFIX "?-client*.%s",
+		                pszExtension);
+	}
+
+	const size_t cchPattern2 = strnlen(pszPattern, cchPattern);
+	const size_t cchSearchPath = cchInstallPrefix + cchAddinPath + cchPattern2 + 3;
+	char* pszSearchPath = calloc(cchSearchPath + 1, sizeof(char));
+
+	if (!pszSearchPath)
+	{
+		WLog_ERR(TAG, "malloc failed!");
+		free(pszPattern);
+		return nullptr;
+	}
+
+	CopyMemory(pszSearchPath, pszInstallPrefix, cchInstallPrefix);
+	pszSearchPath[cchInstallPrefix] = '\0';
+
+	char* result = GetCombinedPathV(pszSearchPath, "%s%c%s", pszAddinPath,
+	                                PathGetSeparatorA(PATH_STYLE_NATIVE), pszPattern);
+	free(pszPattern);
+	free(pszSearchPath);
+
+	if (!result)
+		return nullptr;
+
+	WIN32_FIND_DATAW FindData = WINPR_C_ARRAY_INIT;
+	HANDLE hFind = FindFirstFileUTF8(result, &FindData);
+	free(result);
+
+	DWORD nAddins = 0;
+	FREERDP_ADDIN** ppAddins = (FREERDP_ADDIN**)calloc(128, sizeof(FREERDP_ADDIN*));
+
+	if (!ppAddins)
+	{
+		FindClose(hFind);
+		WLog_ERR(TAG, "calloc failed!");
+		return nullptr;
+	}
+
+	if (hFind == INVALID_HANDLE_VALUE)
+		return ppAddins;
+
+	do
+	{
+		char* cFileName = nullptr;
+		BOOL used = FALSE;
+		FREERDP_ADDIN* pAddin = (FREERDP_ADDIN*)calloc(1, sizeof(FREERDP_ADDIN));
+
+		if (!pAddin)
+		{
+			WLog_ERR(TAG, "calloc failed!");
+			goto error_out;
+		}
+
+		cFileName =
+		    ConvertWCharNToUtf8Alloc(FindData.cFileName, ARRAYSIZE(FindData.cFileName), nullptr);
+		if (!cFileName)
+			goto skip;
+
+		nDashes = 0;
+		for (size_t index = 0; cFileName[index]; index++)
+			nDashes += (cFileName[index] == '-') ? 1 : 0;
+
+		if (nDashes == 1)
+		{
+			size_t len = 0;
+			char* p[2] = WINPR_C_ARRAY_INIT;
+			/* <name>-client.<extension> */
+			p[0] = cFileName;
+			p[1] = strchr(p[0], '-');
+			if (!p[1])
+				goto skip;
+			p[1] += 1;
+
+			len = (size_t)(p[1] - p[0]);
+			if (len < 1)
+			{
+				WLog_WARN(TAG, "Skipping file '%s', invalid format", cFileName);
+				goto skip;
+			}
+			strncpy(pAddin->cName, p[0], MIN(ARRAYSIZE(pAddin->cName), len - 1));
+
+			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
+			pAddin->dwFlags |= FREERDP_ADDIN_DYNAMIC;
+			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
+			ppAddins[nAddins++] = pAddin;
+
+			used = TRUE;
+		}
+		else if (nDashes == 2)
+		{
+			size_t len = 0;
+			char* p[4] = WINPR_C_ARRAY_INIT;
+			/* <name>-client-<subsystem>.<extension> */
+			p[0] = cFileName;
+			p[1] = strchr(p[0], '-');
+			if (!p[1])
+				goto skip;
+			p[1] += 1;
+			p[2] = strchr(p[1], '-');
+			if (!p[2])
+				goto skip;
+			p[2] += 1;
+			p[3] = strchr(p[2], '.');
+			if (!p[3])
+				goto skip;
+			p[3] += 1;
+
+			len = (size_t)(p[1] - p[0]);
+			if (len < 1)
+			{
+				WLog_WARN(TAG, "Skipping file '%s', invalid format", cFileName);
+				goto skip;
+			}
+			strncpy(pAddin->cName, p[0], MIN(ARRAYSIZE(pAddin->cName), len - 1));
+
+			len = (size_t)(p[3] - p[2]);
+			if (len < 1)
+			{
+				WLog_WARN(TAG, "Skipping file '%s', invalid format", cFileName);
+				goto skip;
+			}
+			strncpy(pAddin->cSubsystem, p[2], MIN(ARRAYSIZE(pAddin->cSubsystem), len - 1));
+
+			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
+			pAddin->dwFlags |= FREERDP_ADDIN_DYNAMIC;
+			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
+			pAddin->dwFlags |= FREERDP_ADDIN_SUBSYSTEM;
+			ppAddins[nAddins++] = pAddin;
+
+			used = TRUE;
+		}
+		else if (nDashes == 3)
+		{
+			size_t len = 0;
+			char* p[5] = WINPR_C_ARRAY_INIT;
+			/* <name>-client-<subsystem>-<type>.<extension> */
+			p[0] = cFileName;
+			p[1] = strchr(p[0], '-');
+			if (!p[1])
+				goto skip;
+			p[1] += 1;
+			p[2] = strchr(p[1], '-');
+			if (!p[2])
+				goto skip;
+			p[2] += 1;
+			p[3] = strchr(p[2], '-');
+			if (!p[3])
+				goto skip;
+			p[3] += 1;
+			p[4] = strchr(p[3], '.');
+			if (!p[4])
+				goto skip;
+			p[4] += 1;
+
+			len = (size_t)(p[1] - p[0]);
+			if (len < 1)
+			{
+				WLog_WARN(TAG, "Skipping file '%s', invalid format", cFileName);
+				goto skip;
+			}
+			strncpy(pAddin->cName, p[0], MIN(ARRAYSIZE(pAddin->cName), len - 1));
+
+			len = (size_t)(p[3] - p[2]);
+			if (len < 1)
+			{
+				WLog_WARN(TAG, "Skipping file '%s', invalid format", cFileName);
+				goto skip;
+			}
+			strncpy(pAddin->cSubsystem, p[2], MIN(ARRAYSIZE(pAddin->cSubsystem), len - 1));
+
+			len = (size_t)(p[4] - p[3]);
+			if (len < 1)
+			{
+				WLog_WARN(TAG, "Skipping file '%s', invalid format", cFileName);
+				goto skip;
+			}
+			strncpy(pAddin->cType, p[3], MIN(ARRAYSIZE(pAddin->cType), len - 1));
+
+			pAddin->dwFlags = FREERDP_ADDIN_CLIENT;
+			pAddin->dwFlags |= FREERDP_ADDIN_DYNAMIC;
+			pAddin->dwFlags |= FREERDP_ADDIN_NAME;
+			pAddin->dwFlags |= FREERDP_ADDIN_SUBSYSTEM;
+			pAddin->dwFlags |= FREERDP_ADDIN_TYPE;
+			ppAddins[nAddins++] = pAddin;
+
+			used = TRUE;
+		}
+
+	skip:
+		free(cFileName);
+		if (!used)
+			free(pAddin);
+
+	} while (FindNextFileW(hFind, &FindData));
+
+	FindClose(hFind);
+	ppAddins[nAddins] = nullptr;
+	return ppAddins;
+error_out:
+	FindClose(hFind);
+	freerdp_channels_addin_list_free(ppAddins);
+	return nullptr;
+}
+
+FREERDP_ADDIN** freerdp_channels_list_addins(LPCSTR pszName, LPCSTR pszSubsystem, LPCSTR pszType,
+                                             DWORD dwFlags)
+{
+	if (dwFlags & FREERDP_ADDIN_STATIC)
+		return freerdp_channels_list_client_static_addins(pszName, pszSubsystem, pszType, dwFlags);
+	else if (dwFlags & FREERDP_ADDIN_DYNAMIC)
+		return freerdp_channels_list_dynamic_addins(pszName, pszSubsystem, pszType, dwFlags);
+
+	return nullptr;
+}
+
+void freerdp_channels_addin_list_free(FREERDP_ADDIN** ppAddins)
+{
+	if (!ppAddins)
+		return;
+
+	for (size_t index = 0; ppAddins[index] != nullptr; index++)
+		free(ppAddins[index]);
+
+	free((void*)ppAddins);
+}
+
+extern const STATIC_ENTRY CLIENT_VirtualChannelEntryEx_TABLE[];
+
+static BOOL freerdp_channels_is_virtual_channel_entry_ex(LPCSTR pszName)
+{
+	for (size_t i = 0; CLIENT_VirtualChannelEntryEx_TABLE[i].name != nullptr; i++)
+	{
+		const STATIC_ENTRY* entry = &CLIENT_VirtualChannelEntryEx_TABLE[i];
+
+		if (!strncmp(entry->name, pszName, MAX_PATH))
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+PVIRTUALCHANNELENTRY freerdp_channels_load_static_addin_entry(LPCSTR pszName, LPCSTR pszSubsystem,
+                                                              LPCSTR pszType, DWORD dwFlags)
+{
+	const STATIC_ADDIN_TABLE* table = CLIENT_STATIC_ADDIN_TABLE;
+	const char* type = nullptr;
+
+	if (!pszName)
+		return nullptr;
+
+	if (dwFlags & FREERDP_ADDIN_CHANNEL_DYNAMIC)
+		type = "DVCPluginEntry";
+	else if (dwFlags & FREERDP_ADDIN_CHANNEL_DEVICE)
+		type = "DeviceServiceEntry";
+	else if (dwFlags & FREERDP_ADDIN_CHANNEL_STATIC)
+	{
+		if (dwFlags & FREERDP_ADDIN_CHANNEL_ENTRYEX)
+			type = "VirtualChannelEntryEx";
+		else
+			type = "VirtualChannelEntry";
+	}
+
+	for (; table->name != nullptr; table++)
+	{
+		if (strncmp(table->name, pszName, MAX_PATH) == 0)
+		{
+			if (type && (strncmp(table->type, type, MAX_PATH) != 0))
+				continue;
+
+			if (pszSubsystem != nullptr)
+			{
+				const STATIC_SUBSYSTEM_ENTRY* subsystems = table->table;
+
+				for (; subsystems->name != nullptr; subsystems++)
+				{
+					/* If the pszSubsystem is an empty string use the default backend. */
+					if ((strnlen(pszSubsystem, 1) ==
+					     0) || /* we only want to know if strnlen is > 0 */
+					    (strncmp(subsystems->name, pszSubsystem, MAX_PATH) == 0))
+					{
+						static_subsystem_entry_fn_t fkt = subsystems->entry;
+
+						if (pszType)
+						{
+							if (strncmp(subsystems->type, pszType, MAX_PATH) == 0)
+								return WINPR_FUNC_PTR_CAST(fkt, PVIRTUALCHANNELENTRY);
+						}
+						else
+							return WINPR_FUNC_PTR_CAST(fkt, PVIRTUALCHANNELENTRY);
+					}
+				}
+			}
+			else
+			{
+				if (dwFlags & FREERDP_ADDIN_CHANNEL_ENTRYEX)
+				{
+					if (!freerdp_channels_is_virtual_channel_entry_ex(pszName))
+						return nullptr;
+				}
+
+				return table->entry.csevc;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+typedef struct
+{
+	wMessageQueue* queue;
+	wStream* data_in;
+	HANDLE thread;
+	char* channel_name;
+	rdpContext* ctx;
+	LPVOID userdata;
+	MsgHandler msg_handler;
+	BOOL firstFlagReceived;
+	UINT32 totalLength;
+} msg_proc_internals;
+
+static DWORD WINAPI channel_client_thread_proc(LPVOID userdata)
+{
+	UINT error = CHANNEL_RC_OK;
+	wStream* data = nullptr;
+	wMessage message = WINPR_C_ARRAY_INIT;
+	msg_proc_internals* internals = userdata;
+
+	WINPR_ASSERT(internals);
+
+	while (1)
+	{
+		if (!MessageQueue_Wait(internals->queue))
+		{
+			WLog_ERR(TAG, "MessageQueue_Wait failed!");
+			error = ERROR_INTERNAL_ERROR;
+			break;
+		}
+		if (!MessageQueue_Peek(internals->queue, &message, TRUE))
+		{
+			WLog_ERR(TAG, "MessageQueue_Peek failed!");
+			error = ERROR_INTERNAL_ERROR;
+			break;
+		}
+
+		if (message.id == WMQ_QUIT)
+			break;
+
+		if (message.id == 0)
+		{
+			data = (wStream*)message.wParam;
+
+			if ((error = internals->msg_handler(internals->userdata, data)))
+			{
+				WLog_ERR(TAG, "msg_handler failed with error %" PRIu32 "!", error);
+				break;
+			}
+		}
+	}
+	if (error && internals->ctx)
+	{
+		char msg[128];
+		(void)_snprintf(msg, 127,
+		                "%s_virtual_channel_client_thread reported an"
+		                " error",
+		                internals->channel_name);
+		setChannelError(internals->ctx, error, msg);
+	}
+	ExitThread(error);
+	return error;
+}
+
+static void free_msg(void* obj)
+{
+	wMessage* msg = (wMessage*)obj;
+
+	if (msg && (msg->id == 0))
+	{
+		wStream* s = (wStream*)msg->wParam;
+		Stream_Free(s, TRUE);
+	}
+}
+
+static void channel_client_handler_free(msg_proc_internals* internals)
+{
+	if (!internals)
+		return;
+
+	if (internals->thread)
+		(void)CloseHandle(internals->thread);
+	MessageQueue_Free(internals->queue);
+	Stream_Free(internals->data_in, TRUE);
+	free(internals->channel_name);
+	free(internals);
+}
+
+/*  Create message queue and thread or not, depending on settings */
+void* channel_client_create_handler(rdpContext* ctx, LPVOID userdata, MsgHandler msg_handler,
+                                    const char* channel_name)
+{
+	msg_proc_internals* internals = calloc(1, sizeof(msg_proc_internals));
+	if (!internals)
+	{
+		WLog_ERR(TAG, "calloc failed!");
+		return nullptr;
+	}
+	internals->msg_handler = msg_handler;
+	internals->userdata = userdata;
+	if (channel_name)
+	{
+		internals->channel_name = _strdup(channel_name);
+		if (!internals->channel_name)
+			goto fail;
+	}
+	WINPR_ASSERT(ctx);
+	WINPR_ASSERT(ctx->settings);
+	internals->ctx = ctx;
+	if ((freerdp_settings_get_uint32(ctx->settings, FreeRDP_ThreadingFlags) &
+	     THREADING_FLAGS_DISABLE_THREADS) == 0)
+	{
+		wObject obj = WINPR_C_ARRAY_INIT;
+		obj.fnObjectFree = free_msg;
+		internals->queue = MessageQueue_New(&obj);
+		if (!internals->queue)
+		{
+			WLog_ERR(TAG, "MessageQueue_New failed!");
+			goto fail;
+		}
+
+		if (!(internals->thread = CreateThread(nullptr, 0, channel_client_thread_proc,
+		                                       (void*)internals, 0, nullptr)))
+		{
+			WLog_ERR(TAG, "CreateThread failed!");
+			goto fail;
+		}
+	}
+	return internals;
+
+fail:
+	channel_client_handler_free(internals);
+	return nullptr;
+}
+/* post a message in the queue or directly call the processing handler */
+UINT channel_client_post_message(void* MsgsHandle, LPVOID pData, UINT32 dataLength,
+                                 UINT32 totalLength, UINT32 dataFlags)
+{
+	msg_proc_internals* internals = MsgsHandle;
+	wStream* data_in = nullptr;
+
+	if (!internals)
+	{
+		/* TODO: return some error here */
+		return CHANNEL_RC_OK;
+	}
+
+	if ((dataFlags & CHANNEL_FLAG_SUSPEND) || (dataFlags & CHANNEL_FLAG_RESUME))
+	{
+		return CHANNEL_RC_OK;
+	}
+
+	if (dataFlags & CHANNEL_FLAG_FIRST)
+	{
+		if (internals->firstFlagReceived)
+			return ERROR_INVALID_DATA;
+		internals->firstFlagReceived = TRUE;
+
+		if (internals->data_in)
+		{
+			if (!Stream_EnsureCapacity(internals->data_in, dataLength))
+				return CHANNEL_RC_NO_MEMORY;
+		}
+		else
+			internals->data_in = Stream_New(nullptr, dataLength);
+		internals->totalLength = totalLength;
+	}
+
+	if (!(data_in = internals->data_in))
+	{
+		WLog_ERR(TAG, "Stream_New failed!");
+		return CHANNEL_RC_NO_MEMORY;
+	}
+
+	if (!Stream_EnsureRemainingCapacity(data_in, dataLength))
+	{
+		Stream_Free(internals->data_in, TRUE);
+		internals->data_in = nullptr;
+		return CHANNEL_RC_NO_MEMORY;
+	}
+
+	Stream_Write(data_in, pData, dataLength);
+
+	if ((Stream_GetPosition(data_in) > totalLength) || (internals->totalLength != totalLength))
+	{
+		Stream_Free(internals->data_in, TRUE);
+		internals->data_in = nullptr;
+		return ERROR_INVALID_DATA;
+	}
+
+	if (dataFlags & CHANNEL_FLAG_LAST)
+	{
+		if (!internals->firstFlagReceived)
+			return ERROR_INVALID_DATA;
+		internals->firstFlagReceived = FALSE;
+
+		if (!data_in)
+			return ERROR_INVALID_DATA;
+
+		if (internals->totalLength != Stream_GetPosition(data_in))
+		{
+			WLog_ERR(TAG, "%s_plugin_process_received: read error", internals->channel_name);
+			return ERROR_INTERNAL_ERROR;
+		}
+
+		internals->totalLength = 0;
+		internals->data_in = nullptr;
+		Stream_SealLength(data_in);
+		Stream_ResetPosition(data_in);
+
+		if ((freerdp_settings_get_uint32(internals->ctx->settings, FreeRDP_ThreadingFlags) &
+		     THREADING_FLAGS_DISABLE_THREADS) != 0)
+		{
+			UINT error = CHANNEL_RC_OK;
+			if ((error = internals->msg_handler(internals->userdata, data_in)))
+			{
+				WLog_ERR(TAG,
+				         "msg_handler failed with error"
+				         " %" PRIu32 "!",
+				         error);
+				return ERROR_INTERNAL_ERROR;
+			}
+		}
+		else if (!MessageQueue_Post(internals->queue, nullptr, 0, (void*)data_in, nullptr))
+		{
+			WLog_ERR(TAG, "MessageQueue_Post failed!");
+			return ERROR_INTERNAL_ERROR;
+		}
+	}
+	return CHANNEL_RC_OK;
+}
+/* Tear down queue and thread */
+UINT channel_client_quit_handler(void* MsgsHandle)
+{
+	msg_proc_internals* internals = MsgsHandle;
+	UINT rc = 0;
+	if (!internals)
+	{
+		/* TODO: return some error here */
+		return CHANNEL_RC_OK;
+	}
+
+	WINPR_ASSERT(internals->ctx);
+	WINPR_ASSERT(internals->ctx->settings);
+
+	if ((freerdp_settings_get_uint32(internals->ctx->settings, FreeRDP_ThreadingFlags) &
+	     THREADING_FLAGS_DISABLE_THREADS) == 0)
+	{
+		if (internals->queue && internals->thread)
+		{
+			if (MessageQueue_PostQuit(internals->queue, 0) &&
+			    (WaitForSingleObject(internals->thread, INFINITE) == WAIT_FAILED))
+			{
+				rc = GetLastError();
+				WLog_ERR(TAG, "WaitForSingleObject failed with error %" PRIu32 "", rc);
+				return rc;
+			}
+		}
+	}
+
+	channel_client_handler_free(internals);
+	return CHANNEL_RC_OK;
+}

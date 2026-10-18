@@ -6,11 +6,13 @@
 - **VNC connections**: Connection > New VNC Connection..., or a saved connection of
   type VNC, shown in a pane. lvdterm's own VNC client: VNC password login, Tight
   (zlib and JPEG), ZRLE, Hextile, CopyRect and Raw encodings, mouse, keyboard and
-  two-way clipboard text. The picture is scaled to fit; Shift+right-click opens the
+  two-way clipboard text (copied text is offered to the remote machine as soon as it
+  is copied, so Ctrl+V there pastes it). The picture is scaled to fit; Shift+right-click opens the
   pane menu (a plain right-click goes to the remote machine).
 - **RDP connections**: Connection > New RDP Connection..., or a saved connection of
   type RDP, shown in a pane (NLA/TLS login, mouse and keyboard, scaled to fit).
-  Built on the vendored FreeRDP library. No clipboard, audio or drive redirection
+  Built on the vendored FreeRDP library, with text clipboard in both directions
+  (Ctrl+C / Ctrl+V work across the two machines). No audio or drive redirection
   yet, and the server certificate is not verified.
 - **Detach a tab into its own window**: tab right-click > "Detach Tab to New
   Window", keeping its live connections; "Move Tab to Main Window" puts it back.
@@ -19,6 +21,17 @@
   that displays remote graphical programs on the local X server named by $DISPLAY.
   lvdterm includes no X server: Linux uses the desktop's own; on Windows install
   one such as VcXsrv (the connection form links to it).
+
+### Bugfix
+- SFTP dock: switching between panes of different SSH hosts logged in to the new
+  host again every time (and dropped the previous login). Sessions now stay
+  connected while their pane is open, so switching back is instant; a closed pane's
+  session is disconnected. Also fixed upload requests being connected once more on
+  every switch.
+- RDP: credentials typed at the prompt are remembered for that pane's reconnects
+  instead of being asked for again each time the session drops, and the pane now
+  says why the server ended a session (e.g. another connection with the same
+  account took it over).
 
 ### Notes
 - New third-party components, all statically linked: FreeRDP (Apache-2.0), zlib

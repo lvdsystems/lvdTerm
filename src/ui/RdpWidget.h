@@ -49,5 +49,6 @@ private:
     };
 
     QPointer<RdpClient> m_client;
+    QString m_fromRemote; // the last clipboard text that came from the remote side
     QHash<int, HeldKey> m_heldKeys; // Qt key code -> scancode sent on press, so release matches
 };

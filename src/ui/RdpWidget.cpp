@@ -1,5 +1,7 @@
 #include "RdpWidget.h"
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -83,6 +85,13 @@ bool isModifierKey(int key)
 RdpWidget::RdpWidget(QWidget *parent)
     : QWidget(parent)
 {
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, [this] {
+        if (!m_client)
+            return;
+        const QString text = QGuiApplication::clipboard()->text();
+        if (text != m_fromRemote)
+            m_client->setLocalClipboardText(text);
+    });
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     setAttribute(Qt::WA_OpaquePaintEvent);
@@ -98,6 +107,15 @@ void RdpWidget::setClient(RdpClient *client)
         // Emitted from the session thread: queued to this widget.
         connect(m_client, &RdpClient::frameChanged, this, qOverload<>(&QWidget::update), Qt::QueuedConnection);
         connect(m_client, &RdpClient::ready, this, qOverload<>(&QWidget::update), Qt::QueuedConnection);
+
+        // Clipboard text, both ways (so Ctrl+C / Ctrl+V work across the two machines).
+        connect(m_client, &RdpClient::remoteClipboardText, this, [this](const QString &text) {
+            if (text.isEmpty())
+                return;
+            m_fromRemote = text; // not echoed back by the dataChanged() below
+            QGuiApplication::clipboard()->setText(text);
+        });
+        m_client->setLocalClipboardText(QGuiApplication::clipboard()->text());
     }
     update();
 }

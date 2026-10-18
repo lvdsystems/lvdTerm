@@ -47,12 +47,23 @@ bool askCredentials(const QString &host, QString &user, QString &password, QStri
 } // namespace
 
 RdpTransport::RdpTransport(RdpConnectionSettings settings, QObject *parent)
+    : RdpTransport(std::make_shared<RdpConnectionSettings>(std::move(settings)), parent)
+{
+}
+
+RdpTransport::RdpTransport(std::shared_ptr<RdpConnectionSettings> settings, QObject *parent)
     : Transport(parent)
     , m_settings(std::move(settings))
     , m_client(new RdpClient(this))
 {
     m_client->setCredentialProvider([this](QString &user, QString &password, QString &domain) {
-        return askCredentials(m_settings.host, user, password, domain);
+        if (!askCredentials(m_settings->host, user, password, domain))
+            return false;
+        // Remembered for this pane's later reconnects (not saved anywhere).
+        m_settings->username = user;
+        m_settings->password = password;
+        m_settings->domain = domain;
+        return true;
     });
 
     connect(m_client, &RdpClient::ready, this, [this] { setState(State::Connected); });
@@ -69,7 +80,7 @@ RdpTransport::RdpTransport(RdpConnectionSettings settings, QObject *parent)
 void RdpTransport::connectToHost()
 {
     setState(State::Connecting);
-    m_client->connectToHost(m_settings);
+    m_client->connectToHost(*m_settings);
 }
 
 void RdpTransport::disconnectFromHost()

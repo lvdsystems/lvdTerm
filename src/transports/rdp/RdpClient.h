@@ -22,11 +22,12 @@ class RdpThread;
 // from (paintTo()), under a mutex.
 //
 // Supported: NLA/TLS/RDP security, the legacy bitmap and RemoteFX paths,
-// mouse, keyboard (scan codes, plus Unicode for printable text) and
-// server-side desktop resizes. Not (yet) supported: virtual channels
-// (clipboard, audio, drive/printer redirection) and dynamic resolution -
-// this build of FreeRDP has no channel plugins - and certificates are not
-// verified.
+// mouse, keyboard (scan codes, plus Unicode for printable text), text
+// clipboard in both directions (the "cliprdr" virtual channel) and server-side
+// desktop resizes. Not (yet) supported: other virtual channels (audio,
+// drive/printer redirection, files in the clipboard) and dynamic resolution -
+// this build of FreeRDP has only the clipboard channel - and certificates
+// are not verified.
 //
 // All signals are emitted from the session thread; connections to GUI
 // objects are queued automatically.
@@ -58,17 +59,28 @@ public:
     void sendScancode(quint8 scancode, bool extended, bool down);
     void sendUnicode(quint16 codepoint, bool down);
 
+    // Clipboard text (see the class comment). The local text is what the
+    // remote side gets when it pastes; remoteClipboardText() fires when the
+    // remote side copied something.
+    void setLocalClipboardText(const QString &text);
+
 signals:
     void ready();                 // connected, desktop exists
     void frameChanged();
     void failed(const QString &message);
     void closed();                // session over (after failed(), too)
+    void remoteClipboardText(const QString &text);
 
 private:
     friend class RdpThread;
 
     CredentialProvider m_credentialProvider;
     std::atomic<bool> m_ready{false};
+
+    // The local clipboard text, as last set by setLocalClipboardText().
+    mutable std::mutex m_clipboardMutex;
+    QString m_localClipboard;
+    QString localClipboardText() const;
 
     // The framebuffer copy.
     mutable std::mutex m_imageMutex;

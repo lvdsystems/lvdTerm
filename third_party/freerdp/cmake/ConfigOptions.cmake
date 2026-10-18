@@ -61,7 +61,7 @@ option(WITH_CHANNELS "Build virtual channel plugins" ON)
 
 option(FREERDP_UNIFIED_BUILD "Build WinPR, uwac, RdTk and FreeRDP in one go" ON)
 
-cmake_dependent_option(WITH_CLIENT_CHANNELS "Build virtual channel plugins" ON "WITH_CLIENT_COMMON;WITH_CHANNELS" OFF)
+cmake_dependent_option(WITH_CLIENT_CHANNELS "Build virtual channel plugins" ON "WITH_CHANNELS" OFF)
 
 cmake_dependent_option(WITH_MACAUDIO "Enable OSX sound backend" ON "APPLE;NOT IOS" OFF)
 

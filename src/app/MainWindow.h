@@ -120,6 +120,7 @@ private:
     void transferTab(int index, MainWindow *dest);
     void acceptTab(QWidget *root, const QString &title, const QIcon &icon);
     void wireView(TerminalView *view);  // connects a pane's signals to this window
+    void pruneSftpSessions();           // the SFTP dock drops sessions of connections no pane uses
     void onCurrentTabChanged(int index); // focuses the new tab's first pane
 
     // m_activeView is only set once a real Qt focus-change event has
