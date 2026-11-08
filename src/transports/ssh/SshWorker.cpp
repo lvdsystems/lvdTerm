@@ -8,9 +8,17 @@
 #include "SshTransport.h"
 #include "X11Forwarder.h"
 
-SshWorker::SshWorker(SshConnectionSettings settings, SshTransport *transport)
+namespace
+{
+constexpr qint64 kMaxBytesInFlight = 256 * 1024;
+constexpr qint64 kResumeBytesInFlight = 64 * 1024;
+constexpr int kResumeCheckMs = 5;
+} // namespace
+
+SshWorker::SshWorker(SshConnectionSettings settings, SshTransport *transport, std::shared_ptr<std::atomic<qint64>> bytesInFlight)
     : m_settings(std::move(settings))
     , m_transport(transport)
+    , m_bytesInFlight(std::move(bytesInFlight))
 {
 }
 
@@ -55,6 +63,7 @@ void SshWorker::start()
     // makes no sense for PublicKey auth, and a rejected key is something
     // to fix in the connection's settings, not paper over live.
     constexpr int kMaxPasswordAttempts = 3;
+    bool passwordChanged = false;
     for (int attempt = 1; !SshConnectHelper::authenticate(m_session, m_settings, &error); ++attempt) {
         const bool canRetry = m_settings.authMethod == SshConnectionSettings::AuthMethod::Password && attempt < kMaxPasswordAttempts && m_transport;
         if (!canRetry) {
@@ -74,7 +83,10 @@ void SshWorker::start()
             return;
         }
         m_settings.password = result.value;
+        passwordChanged = true;
     }
+    if (passwordChanged)
+        emit passwordAccepted(m_settings.password);
 
     if (!openShellChannel()) {
         // openShellChannel() emits its own errorOccurred() on failure.
@@ -110,6 +122,9 @@ void SshWorker::start()
     m_keepaliveTimer = new QTimer(this);
     connect(m_keepaliveTimer, &QTimer::timeout, this, &SshWorker::onKeepaliveTimer);
     m_keepaliveTimer->start(15000);
+
+    m_resumeTimer = new QTimer(this);
+    connect(m_resumeTimer, &QTimer::timeout, this, &SshWorker::onResumeTimer);
 
     emit connected();
 }
@@ -189,22 +204,43 @@ void SshWorker::onReadActivity()
     if (m_x11)
         m_x11->pump();
     for (;;) {
+        if (m_bytesInFlight->load() > kMaxBytesInFlight) {
+            m_readNotifier->setEnabled(false);
+            m_resumeTimer->start(kResumeCheckMs);
+            break;
+        }
+
         const ssize_t n = libssh2_channel_read(m_channel, buffer, sizeof(buffer));
         if (n > 0) {
+            m_bytesInFlight->fetch_add(n);
             emit dataReceived(QByteArray(buffer, static_cast<int>(n)));
             continue;
         }
         if (n == LIBSSH2_ERROR_EAGAIN)
-            return;
+            break;
 
         // n == 0 with EOF set, or a real error: the session is over.
         if (n == 0 && !libssh2_channel_eof(m_channel))
-            return; // spurious wakeup
+            break; // spurious wakeup
 
         teardown();
         emit disconnected();
         return;
     }
+
+    // What arrived may be the window update a stalled write was waiting for.
+    if (!m_pendingWrite.isEmpty())
+        pumpWrites();
+}
+
+void SshWorker::onResumeTimer()
+{
+    if (m_bytesInFlight->load() > kResumeBytesInFlight)
+        return;
+
+    m_resumeTimer->stop();
+    m_readNotifier->setEnabled(true);
+    onReadActivity(); // libssh2 may already hold data the socket won't signal again
 }
 
 void SshWorker::onWriteActivity()
@@ -217,7 +253,10 @@ void SshWorker::pumpWrites()
     while (!m_pendingWrite.isEmpty()) {
         const ssize_t n = libssh2_channel_write(m_channel, m_pendingWrite.constData(), static_cast<size_t>(m_pendingWrite.size()));
         if (n == LIBSSH2_ERROR_EAGAIN) {
-            m_writeNotifier->setEnabled(true);
+            // Waiting on the socket, or on the server's flow-control window?
+            // Only the former is writability; the latter arrives as incoming
+            // data (see onReadActivity()), and a write notifier would just spin.
+            m_writeNotifier->setEnabled(libssh2_session_block_directions(m_session) & LIBSSH2_SESSION_BLOCK_OUTBOUND);
             return;
         }
         if (n < 0) {
@@ -236,19 +275,40 @@ void SshWorker::onKeepaliveTimer()
         return;
 
     int secondsToNext = 0;
-    libssh2_keepalive_send(m_session, &secondsToNext);
+    const int rc = libssh2_keepalive_send(m_session, &secondsToNext);
+    if (rc != 0 && rc != LIBSSH2_ERROR_EAGAIN) {
+        teardown();
+        emit disconnected();
+        return;
+    }
+    if (!m_pendingWrite.isEmpty())
+        pumpWrites();
 }
 
 void SshWorker::teardown()
 {
     m_stage = Stage::Idle;
 
-    delete m_keepaliveTimer;
-    m_keepaliveTimer = nullptr;
-    delete m_readNotifier;
-    m_readNotifier = nullptr;
-    delete m_writeNotifier;
-    m_writeNotifier = nullptr;
+    // Stopped now, deleted later: this often runs from inside one of their own
+    // signals. The notifiers must be off before the socket closes below.
+    const auto discardTimer = [](QTimer *&timer) {
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+            timer = nullptr;
+        }
+    };
+    const auto discardNotifier = [](QSocketNotifier *&notifier) {
+        if (notifier) {
+            notifier->setEnabled(false);
+            notifier->deleteLater();
+            notifier = nullptr;
+        }
+    };
+    discardTimer(m_keepaliveTimer);
+    discardTimer(m_resumeTimer);
+    discardNotifier(m_readNotifier);
+    discardNotifier(m_writeNotifier);
     delete m_x11; // frees its channels, so before the session goes
     m_x11 = nullptr;
 
@@ -261,6 +321,6 @@ void SshWorker::teardown()
         libssh2_session_free(m_session);
         m_session = nullptr;
     }
-    SshConnectHelper::closeSocketAndCleanup(m_socket);
+    SshConnectHelper::closeSocket(m_socket);
     m_socket = LIBSSH2_INVALID_SOCKET;
 }

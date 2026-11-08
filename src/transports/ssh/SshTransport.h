@@ -40,6 +40,10 @@ public:
     // post-failure retry.
     Q_INVOKABLE SshCredentialPrompt promptForPassword(const QString &host, const QString &username);
 
+signals:
+    // A password typed at the "wrong password" prompt worked (see SshWorker).
+    void passwordAccepted(const QString &password);
+
 public slots:
     void write(const QByteArray &data) override;
 

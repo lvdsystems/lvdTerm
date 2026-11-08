@@ -4,6 +4,7 @@
 #include <QMetaObject>
 
 #include "core/ThreadReaper.h"
+#include "ui/PromptParent.h"
 
 SftpSession::SftpSession(SshConnectionSettings settings, QObject *parent)
     : QObject(parent)
@@ -41,6 +42,11 @@ void SftpSession::connectToHost()
 void SftpSession::disconnectFromHost()
 {
     QMetaObject::invokeMethod(m_client, "disconnectFromHost", Qt::QueuedConnection);
+}
+
+void SftpSession::checkConnection()
+{
+    QMetaObject::invokeMethod(m_client, "checkConnection", Qt::QueuedConnection);
 }
 
 void SftpSession::listDirectory(const QString &path)
@@ -95,6 +101,6 @@ void SftpSession::renameEntry(const QString &oldPath, const QString &newPath)
 
 bool SftpSession::confirmHostKey(const QString &message)
 {
-    return QMessageBox::warning(nullptr, QStringLiteral("SSH Host Key"), message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+    return QMessageBox::warning(promptParent(), QStringLiteral("SSH Host Key"), message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
         == QMessageBox::Yes;
 }

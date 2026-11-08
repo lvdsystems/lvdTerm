@@ -6,13 +6,16 @@
 
 #include "SshWorker.h"
 #include "core/ThreadReaper.h"
+#include "ui/PromptParent.h"
 
 SshTransport::SshTransport(SshConnectionSettings settings, QObject *parent)
     : Transport(parent)
     , m_settings(std::move(settings))
     , m_thread(new QThread)
-    , m_worker(new SshWorker(m_settings, this))
+    , m_worker(nullptr)
 {
+    auto bytesInFlight = std::make_shared<std::atomic<qint64>>(0);
+    m_worker = new SshWorker(m_settings, this, bytesInFlight);
     m_worker->moveToThread(m_thread);
 
     connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
@@ -20,7 +23,11 @@ SshTransport::SshTransport(SshConnectionSettings settings, QObject *parent)
     connect(m_worker, &SshWorker::connected, this, [this] { setState(State::Connected); });
     connect(m_worker, &SshWorker::disconnected, this, [this] { setState(State::Disconnected); });
     connect(m_worker, &SshWorker::errorOccurred, this, &Transport::errorOccurred);
-    connect(m_worker, &SshWorker::dataReceived, this, &Transport::readyRead);
+    connect(m_worker, &SshWorker::passwordAccepted, this, &SshTransport::passwordAccepted);
+    connect(m_worker, &SshWorker::dataReceived, this, [this, bytesInFlight](const QByteArray &data) {
+        emit readyRead(data);
+        bytesInFlight->fetch_sub(data.size());
+    });
 
     m_thread->start();
 }
@@ -64,14 +71,14 @@ void SshTransport::write(const QByteArray &data)
 
 bool SshTransport::confirmHostKey(const QString &message)
 {
-    return QMessageBox::warning(nullptr, QStringLiteral("SSH Host Key"), message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+    return QMessageBox::warning(promptParent(), QStringLiteral("SSH Host Key"), message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
         == QMessageBox::Yes;
 }
 
 SshCredentialPrompt SshTransport::promptForPassword(const QString &host, const QString &username)
 {
     SshCredentialPrompt result;
-    result.value = QInputDialog::getText(nullptr, QStringLiteral("SSH Authentication Failed"),
+    result.value = QInputDialog::getText(promptParent(), QStringLiteral("SSH Authentication Failed"),
                                           QStringLiteral("Wrong password. Password for %1@%2:").arg(username, host), QLineEdit::Password,
                                           QString(), &result.accepted);
     return result;

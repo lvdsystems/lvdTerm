@@ -51,6 +51,7 @@ private:
 
     static void onChannelOpen(LIBSSH2_SESSION *session, LIBSSH2_CHANNEL *channel, const char *host, int port, void **abstract);
     void adopt(LIBSSH2_CHANNEL *channel);
+    void startPendingConnections();
     bool processSetup(Connection &c);
     static bool localClosed(const Connection &c);
     void closeConnection(Connection &c);
@@ -59,6 +60,10 @@ private:
     LIBSSH2_SESSION *m_session;
     QTimer *m_pollTimer = nullptr;
     QList<Connection> m_connections;
+    // libssh2 reports a new channel from inside a read - possibly one pump() is
+    // doing while it walks m_connections - so it only waits here at first.
+    QList<LIBSSH2_CHANNEL *> m_newChannels;
+    bool m_pumping = false;
 
     QByteArray m_fakeCookie; // 16 raw bytes
     QByteArray m_realCookie; // 16 raw bytes, empty if none found

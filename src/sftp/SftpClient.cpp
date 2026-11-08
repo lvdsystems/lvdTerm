@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QTimer>
 
 #include "transports/ssh/SshConnectHelper.h"
 
@@ -14,6 +15,16 @@ QString joinPath(const QString &dir, const QString &name)
 {
     return dir.endsWith(QLatin1Char('/')) ? dir + name : dir + QLatin1Char('/') + name;
 }
+
+// Bound on one blocking libssh2 call once connected: one chunk of a transfer,
+// not a whole transfer.
+constexpr long kOperationTimeoutMs = 60000;
+// How long closing may wait on a connection that is probably already dead.
+constexpr long kCloseTimeoutMs = 5000;
+constexpr int kIdleCheckIntervalMs = 30000;
+// How long an SFTP reply may take to start arriving. libssh2's default is 60 s,
+// which a dead session would have to sit through on top of the check interval.
+constexpr long kReplyTimeoutSeconds = 30;
 
 QString sftpErrorString(unsigned long code)
 {
@@ -49,6 +60,8 @@ SftpClient::SftpClient(SshConnectionSettings settings, QObject *hostKeyPromptTar
     // Needed for directoryListed(QString, QVector<SftpEntry>) to cross
     // the GUI/worker thread boundary via a queued connection.
     qRegisterMetaType<QVector<SftpEntry>>("QVector<SftpEntry>");
+
+    connect(this, &SftpClient::operationFailed, this, &SftpClient::onOperationFailed);
 }
 
 SftpClient::~SftpClient()
@@ -62,25 +75,27 @@ void SftpClient::connectToHost()
 
     m_socket = SshConnectHelper::connectSocket(m_settings.host, m_settings.port, &error);
     if (m_socket == LIBSSH2_INVALID_SOCKET) {
-        emit connectFailed(error);
+        emit connectFailed(error, true);
         return;
     }
 
     m_session = libssh2_session_init();
     if (!m_session) {
-        emit connectFailed(QStringLiteral("Could not allocate SSH session"));
+        emit connectFailed(QStringLiteral("Could not allocate SSH session"), true);
         teardown();
         return;
     }
 
     if (!SshConnectHelper::handshakeAndVerifyHostKey(m_session, m_socket, m_settings.host, m_settings.port, m_hostKeyPromptTarget, &error)) {
-        emit connectFailed(error);
+        // A network failure is worth retrying; a rejected key isn't. The
+        // handshake's own errors are the ones with a libssh2 error set.
+        emit connectFailed(error, SshConnectHelper::isConnectionError(m_session));
         teardown();
         return;
     }
 
     if (!SshConnectHelper::authenticate(m_session, m_settings, &error)) {
-        emit connectFailed(error);
+        emit connectFailed(error, SshConnectHelper::isConnectionError(m_session));
         teardown();
         return;
     }
@@ -102,7 +117,7 @@ void SftpClient::connectToHost()
 
     m_sftp = libssh2_sftp_init(m_session);
     if (!m_sftp) {
-        emit connectFailed(QStringLiteral("Could not start SFTP subsystem"));
+        emit connectFailed(QStringLiteral("Could not start SFTP subsystem"), SshConnectHelper::isConnectionError(m_session));
         teardown();
         return;
     }
@@ -114,7 +129,32 @@ void SftpClient::connectToHost()
     const int len = libssh2_sftp_realpath(m_sftp, ".", realPathBuf, sizeof(realPathBuf));
     const QString homePath = len > 0 ? QString::fromUtf8(realPathBuf, len) : QStringLiteral("/");
 
+    libssh2_session_set_timeout(m_session, kOperationTimeoutMs);
+    libssh2_session_set_read_timeout(m_session, kReplyTimeoutSeconds);
+
+    m_idleCheck = new QTimer(this);
+    connect(m_idleCheck, &QTimer::timeout, this, &SftpClient::checkConnection);
+    m_idleCheck->start(kIdleCheckIntervalMs);
+
     emit connected(homePath);
+}
+
+void SftpClient::checkConnection()
+{
+    if (!m_sftp)
+        return;
+
+    char path[1024];
+    if (libssh2_sftp_realpath(m_sftp, ".", path, sizeof(path)) < 0)
+        onOperationFailed();
+}
+
+void SftpClient::onOperationFailed()
+{
+    if (m_session && SshConnectHelper::isConnectionError(m_session)) {
+        teardown();
+        emit disconnected();
+    }
 }
 
 void SftpClient::disconnectFromHost()
@@ -180,7 +220,12 @@ void SftpClient::listDirectory(const QString &path)
         entry.modifiedTime = (attrs.flags & LIBSSH2_SFTP_ATTR_ACMODTIME) ? static_cast<qint64>(attrs.mtime) : 0;
         entries.append(entry);
     }
+    const bool connectionLost = rc < 0 && SshConnectHelper::isConnectionError(m_session);
     libssh2_sftp_closedir(handle);
+    if (connectionLost) {
+        emit operationFailed(QStringLiteral("list"), path, QStringLiteral("Connection lost"));
+        return;
+    }
 
     std::sort(entries.begin(), entries.end(), [](const SftpEntry &a, const SftpEntry &b) {
         if (a.isDirectory != b.isDirectory)
@@ -577,6 +622,14 @@ void SftpClient::renameEntry(const QString &oldPath, const QString &newPath)
 
 void SftpClient::teardown()
 {
+    if (m_idleCheck) {
+        m_idleCheck->stop();
+        m_idleCheck->deleteLater(); // this can be running from its own timeout
+        m_idleCheck = nullptr;
+    }
+
+    if (m_session)
+        libssh2_session_set_timeout(m_session, kCloseTimeoutMs);
     if (m_sftp) {
         libssh2_sftp_shutdown(m_sftp);
         m_sftp = nullptr;
@@ -586,6 +639,6 @@ void SftpClient::teardown()
         libssh2_session_free(m_session);
         m_session = nullptr;
     }
-    SshConnectHelper::closeSocketAndCleanup(m_socket);
+    SshConnectHelper::closeSocket(m_socket);
     m_socket = LIBSSH2_INVALID_SOCKET;
 }

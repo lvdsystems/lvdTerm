@@ -15,6 +15,7 @@
 #include "MainWindow.h"
 #include "Theme.h"
 #include "Version.h"
+#include "core/HangWatchdog.h"
 #include "core/AppSettings.h"
 #include "core/ThreadReaper.h"
 #include "terminal/KeyboardProfiles.h"
@@ -92,10 +93,14 @@ int main(int argc, char *argv[])
     if (libssh2_init(0) != 0)
         qWarning("libssh2_init() failed; SSH connections will not work");
 
+    HangWatchdog::start();
+
     MainWindow window;
     window.show();
 
     const int result = QApplication::exec();
+
+    HangWatchdog::stop();
 
     // SshTransport/SftpSession hand still-shutting-down worker threads
     // off to ThreadReaper instead of blocking their own destructors (see

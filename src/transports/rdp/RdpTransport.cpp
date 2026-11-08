@@ -8,6 +8,7 @@
 #include <QVBoxLayout>
 
 #include "RdpClient.h"
+#include "ui/PromptParent.h"
 
 namespace
 {
@@ -15,7 +16,7 @@ namespace
 // this on it, with the session thread waiting).
 bool askCredentials(const QString &host, QString &user, QString &password, QString &domain)
 {
-    QDialog dialog;
+    QDialog dialog(promptParent());
     dialog.setWindowTitle(QStringLiteral("RDP Credentials"));
     auto *userEdit = new QLineEdit(user, &dialog);
     auto *domainEdit = new QLineEdit(domain, &dialog);
@@ -56,13 +57,13 @@ RdpTransport::RdpTransport(std::shared_ptr<RdpConnectionSettings> settings, QObj
     , m_settings(std::move(settings))
     , m_client(new RdpClient(this))
 {
-    m_client->setCredentialProvider([this](QString &user, QString &password, QString &domain) {
-        if (!askCredentials(m_settings->host, user, password, domain))
+    m_client->setCredentialProvider([settings = m_settings](QString &user, QString &password, QString &domain) {
+        if (!askCredentials(settings->host, user, password, domain))
             return false;
         // Remembered for this pane's later reconnects (not saved anywhere).
-        m_settings->username = user;
-        m_settings->password = password;
-        m_settings->domain = domain;
+        settings->username = user;
+        settings->password = password;
+        settings->domain = domain;
         return true;
     });
 

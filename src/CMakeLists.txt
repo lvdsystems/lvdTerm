@@ -36,6 +36,8 @@ add_executable(lvdterm WIN32
     core/ReconnectPolicy.h
     core/ShortcutManager.cpp
     core/ShortcutManager.h
+    core/HangWatchdog.cpp
+    core/HangWatchdog.h
     core/ThreadReaper.cpp
     core/ThreadReaper.h
     core/Transport.h

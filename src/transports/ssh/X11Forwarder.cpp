@@ -1,5 +1,7 @@
 #include "X11Forwarder.h"
 
+#include <utility>
+
 #include <QLocalSocket>
 #include <QProcess>
 #include <QRandomGenerator>
@@ -51,6 +53,9 @@ X11Forwarder::~X11Forwarder()
     for (Connection &c : m_connections)
         closeConnection(c);
     m_connections.clear();
+    for (LIBSSH2_CHANNEL *channel : std::as_const(m_newChannels))
+        libssh2_channel_free(channel);
+    m_newChannels.clear();
     *libssh2_session_abstract(m_session) = nullptr;
 }
 
@@ -118,27 +123,35 @@ void X11Forwarder::onChannelOpen(LIBSSH2_SESSION *session, LIBSSH2_CHANNEL *chan
 
 void X11Forwarder::adopt(LIBSSH2_CHANNEL *channel)
 {
-    Connection c;
-    c.channel = channel;
-
-    if (!m_unixPath.isEmpty()) {
-        auto *s = new QLocalSocket(this);
-        connect(s, &QLocalSocket::readyRead, this, &X11Forwarder::pump);
-        connect(s, &QLocalSocket::disconnected, this, &X11Forwarder::pump);
-        s->connectToServer(m_unixPath);
-        c.socket = s;
-    } else {
-        auto *s = new QTcpSocket(this);
-        connect(s, &QTcpSocket::readyRead, this, &X11Forwarder::pump);
-        connect(s, &QTcpSocket::disconnected, this, &X11Forwarder::pump);
-        connect(s, &QTcpSocket::errorOccurred, this, &X11Forwarder::pump);
-        s->connectToHost(m_tcpHost, m_tcpPort);
-        c.socket = s;
-    }
-
-    m_connections.append(c);
+    m_newChannels.append(channel);
     if (!m_pollTimer->isActive())
         m_pollTimer->start(10);
+}
+
+void X11Forwarder::startPendingConnections()
+{
+    const QList<LIBSSH2_CHANNEL *> channels = std::exchange(m_newChannels, {});
+    for (LIBSSH2_CHANNEL *channel : channels) {
+        Connection c;
+        c.channel = channel;
+
+        if (!m_unixPath.isEmpty()) {
+            auto *s = new QLocalSocket(this);
+            connect(s, &QLocalSocket::readyRead, this, &X11Forwarder::pump);
+            connect(s, &QLocalSocket::disconnected, this, &X11Forwarder::pump);
+            s->connectToServer(m_unixPath);
+            c.socket = s;
+        } else {
+            auto *s = new QTcpSocket(this);
+            connect(s, &QTcpSocket::readyRead, this, &X11Forwarder::pump);
+            connect(s, &QTcpSocket::disconnected, this, &X11Forwarder::pump);
+            connect(s, &QTcpSocket::errorOccurred, this, &X11Forwarder::pump);
+            s->connectToHost(m_tcpHost, m_tcpPort);
+            c.socket = s;
+        }
+
+        m_connections.append(c);
+    }
 }
 
 // The remote X client's first bytes are the connection-setup request:
@@ -208,6 +221,13 @@ void X11Forwarder::closeConnection(Connection &c)
 
 void X11Forwarder::pump()
 {
+    // A socket can report trouble synchronously from inside the loop below.
+    if (m_pumping)
+        return;
+    m_pumping = true;
+
+    startPendingConnections();
+
     char buffer[16384];
 
     for (int i = 0; i < m_connections.size();) {
@@ -272,6 +292,8 @@ void X11Forwarder::pump()
         }
     }
 
-    if (m_connections.isEmpty())
+    m_pumping = false;
+
+    if (m_connections.isEmpty() && m_newChannels.isEmpty())
         m_pollTimer->stop();
 }

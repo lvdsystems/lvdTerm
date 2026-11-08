@@ -20,6 +20,7 @@ public:
 
     void connectToHost();
     void disconnectFromHost();
+    void checkConnection(); // disconnected() follows if the connection turns out to be gone
     void listDirectory(const QString &path);
     void downloadFile(const QString &remotePath, const QString &localPath);
     void uploadFile(const QString &localPath, const QString &remotePath);
@@ -37,7 +38,7 @@ public:
 
 signals:
     void connected(const QString &homePath);
-    void connectFailed(const QString &message);
+    void connectFailed(const QString &message, bool retryable); // see SftpClient
     void disconnected();
 
     void directoryListed(const QString &path, const QVector<SftpEntry> &entries);

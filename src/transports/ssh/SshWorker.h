@@ -2,6 +2,9 @@
 
 #include <libssh2.h>
 
+#include <atomic>
+#include <memory>
+
 #include <QByteArray>
 #include <QObject>
 #include <QPointer>
@@ -32,7 +35,13 @@ class SshWorker : public QObject
     Q_OBJECT
 
 public:
-    SshWorker(SshConnectionSettings settings, SshTransport *transport);
+    // `bytesInFlight`: what has been emitted through dataReceived() and not yet
+    // processed by the receiver (which subtracts it again). Reading pauses while
+    // this is high. Without a limit, a burst of output floods the GUI thread with
+    // queued events faster than it can handle them, and Qt delivers those before
+    // any input or painting: the whole application freezes for as long as the
+    // output lasts.
+    SshWorker(SshConnectionSettings settings, SshTransport *transport, std::shared_ptr<std::atomic<qint64>> bytesInFlight);
     ~SshWorker() override;
 
 public slots:
@@ -46,11 +55,14 @@ signals:
     void connected();
     void disconnected();
     void errorOccurred(const QString &message);
+    // A password typed at the "wrong password" prompt worked.
+    void passwordAccepted(const QString &password);
 
 private slots:
     void onReadActivity();
     void onWriteActivity();
     void onKeepaliveTimer();
+    void onResumeTimer();
 
 private:
     enum class Stage
@@ -74,6 +86,8 @@ private:
     QSocketNotifier *m_readNotifier = nullptr;
     QSocketNotifier *m_writeNotifier = nullptr;
     QTimer *m_keepaliveTimer = nullptr;
+    QTimer *m_resumeTimer = nullptr; // reading paused, see bytesInFlight
+    std::shared_ptr<std::atomic<qint64>> m_bytesInFlight;
     X11Forwarder *m_x11 = nullptr;
 
     QByteArray m_pendingWrite;

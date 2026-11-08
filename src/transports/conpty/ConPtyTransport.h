@@ -1,7 +1,6 @@
 #pragma once
 
-#include <atomic>
-#include <thread>
+#include <memory>
 
 #include <QString>
 
@@ -15,6 +14,11 @@
 // than linked, so the binary still starts on a Windows too old to have
 // it (connecting then just fails with an error message), and doesn't
 // depend on which of these declarations the toolchain's headers ship.
+//
+// Nothing here may block the GUI thread: keystrokes go through a writer thread
+// (a pipe write waits for as long as the shell isn't reading), and closing happens
+// on a thread of its own (ClosePseudoConsole waits for the console's processes and
+// for its output to drain). Output is throttled while the GUI thread catches up.
 class ConPtyTransport : public Transport
 {
     Q_OBJECT
@@ -45,6 +49,6 @@ private:
     void *m_outputRead = nullptr; // we read terminal output here
     void *m_process = nullptr;
 
-    std::thread m_reader;
-    std::atomic<bool> m_shuttingDown{false};
+    struct Shared; // what the helper threads use, which may outlive this object
+    std::shared_ptr<Shared> m_shared;
 };

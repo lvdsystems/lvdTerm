@@ -15,6 +15,7 @@ class QAction;
 class QKeyEvent;
 class QLabel;
 class QProgressBar;
+class QTimer;
 class QToolButton;
 class QPushButton;
 class SftpSession;
@@ -68,9 +69,15 @@ public:
     // uses any more are disconnected.
     void keepOnly(const QList<SshConnectionSettings> &inUse);
 
+    // A terminal pane to this host just (re)connected. Follows it: a dock that
+    // is down reconnects right away, one that looks up gets checked, since the
+    // same network problem may well have killed it too.
+    void connectionUp(const SshConnectionSettings &settings);
+
 private slots:
     void onConnected(const QString &homePath);
-    void onConnectFailed(const QString &message);
+    void onConnectFailed(const QString &message, bool retryable);
+    void onSessionLost();
     void onDirectoryListed(const QString &path, const QVector<SftpEntry> &entries);
     void onOperationFailed(const QString &operation, const QString &path, const QString &message);
     void onOperationSucceeded(const QString &operation, const QString &path);
@@ -113,6 +120,8 @@ private:
     void updatePathLabel();
     void setStatus(const QString &text);
     void teardownSession();
+    void startSession();                  // a new login to m_settings
+    void scheduleReconnect();
     void parkSession();                   // keeps a connected session for later, see setActiveConnection()
     void attachSession(SftpSession *session); // wires a session's signals to this dock
     static QString connectionKey(const SshConnectionSettings &settings);
@@ -142,6 +151,13 @@ private:
         QString home;
     };
     QHash<QString, Parked> m_parked;
+
+    // Reconnecting a session that failed or dropped, with growing delays - as long
+    // as its connection stays the active one, unless retrying is pointless (see
+    // SftpClient::connectFailed): then only a pane reconnecting or Refresh tries again.
+    QTimer *m_reconnectTimer = nullptr;
+    int m_reconnectDelayMs = 0;
+    bool m_giveUpReconnecting = false;
 
     // Browser-style history of folders visited (see enterDirectory());
     // an invalid index is the connection's home/root listing.

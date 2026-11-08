@@ -35,6 +35,7 @@
 #include "core/StateIcon.h"
 #include "core/Transport.h"
 #include "transports/rdp/RdpTransport.h"
+#include "transports/ssh/SshTransport.h"
 #include "transports/vnc/VncTransport.h"
 #include "ui/RdpWidget.h"
 #include "ui/VncWidget.h"
@@ -637,6 +638,15 @@ void TerminalView::hookTransportSignals()
     connect(m_transport, &Transport::stateChanged, this, &TerminalView::onStateChanged);
     connect(m_transport, &Transport::errorOccurred, this, &TerminalView::errorOccurred);
     connect(m_transport, &Transport::readyRead, this, &TerminalView::onDataForLogging);
+
+    if (auto *ssh = qobject_cast<SshTransport *>(m_transport)) {
+        connect(ssh, &SshTransport::passwordAccepted, this, [this](const QString &password) {
+            if (m_sshSettings) {
+                m_sshSettings->password = password;
+                emit sshSettingsChanged();
+            }
+        });
+    }
 
     // Hex mode: bytes go straight to the dump view instead of through
     // m_session/the VT100 emulation (see m_hexMode's declaration).

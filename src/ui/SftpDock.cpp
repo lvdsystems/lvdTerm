@@ -666,6 +666,13 @@ SftpDock::SftpDock(QWidget *parent)
     connect(m_view, &SftpBrowserView::dragTargetChanged, this, [this](const QString &dir) { showDropOverlay(dir); });
     connect(m_view, &SftpBrowserView::dragLeft, this, &SftpDock::hideDropOverlay);
 
+    m_reconnectTimer = new QTimer(this);
+    m_reconnectTimer->setSingleShot(true);
+    connect(m_reconnectTimer, &QTimer::timeout, this, [this] {
+        if (m_settings && !m_session)
+            startSession();
+    });
+
     // No SSH pane is focused yet at startup - see setActiveConnection().
     m_view->setEnabled(false);
     m_toolbar->setEnabled(false);
@@ -732,6 +739,12 @@ void SftpDock::keepOnly(const QList<SshConnectionSettings> &inUse)
     QStringList keys;
     for (const SshConnectionSettings &s : inUse)
         keys << connectionKey(s);
+
+    // The pane this dock was following is gone too: stop following it (it would
+    // otherwise keep reconnecting to a host nothing is using).
+    if (m_settings && !keys.contains(connectionKey(*m_settings)))
+        setActiveConnection(std::nullopt);
+
     for (auto it = m_parked.begin(); it != m_parked.end();) {
         if (!keys.contains(it.key())) {
             it->session->disconnectFromHost();
@@ -746,6 +759,7 @@ void SftpDock::keepOnly(const QList<SshConnectionSettings> &inUse)
 void SftpDock::teardownSession()
 {
     if (m_session) {
+        m_session->disconnect(this); // going away on purpose: not a lost connection
         m_session->disconnectFromHost();
         m_session->deleteLater();
         m_session = nullptr;
@@ -763,9 +777,23 @@ void SftpDock::setActiveConnection(const std::optional<SshConnectionSettings> &s
     // do (avoids reconnecting every time focus merely moves within the
     // same SSH pane's split panes, or the pane just gets re-focused).
     if (settings.has_value() == m_settings.has_value() && (!settings || (settings->host == m_settings->host && settings->port == m_settings->port
-                                                                          && settings->username == m_settings->username)))
+                                                                          && settings->username == m_settings->username))) {
+        if (!settings)
+            return;
+        // The same login, but the pane has newer credentials (a password corrected
+        // at its prompt): the reason a failed login here could now work.
+        const bool newCredentials = settings->password != m_settings->password || settings->passphrase != m_settings->passphrase;
+        m_settings = settings;
+        if (!m_session && (newCredentials || !m_giveUpReconnecting)) {
+            m_reconnectTimer->stop();
+            startSession();
+        }
         return;
+    }
 
+    m_reconnectTimer->stop();
+    m_reconnectDelayMs = 0;
+    m_giveUpReconnecting = false;
     parkSession();
     m_settings = settings;
     m_model->setRoot(QString());
@@ -791,9 +819,48 @@ void SftpDock::setActiveConnection(const std::optional<SshConnectionSettings> &s
         return;
     }
 
+    startSession();
+}
+
+void SftpDock::startSession()
+{
+    setStatus(QStringLiteral("Connecting..."));
     m_session = new SftpSession(*m_settings, this);
     attachSession(m_session);
     m_session->connectToHost();
+}
+
+void SftpDock::connectionUp(const SshConnectionSettings &settings)
+{
+    if (!m_settings || connectionKey(settings) != connectionKey(*m_settings))
+        return;
+
+    if (!m_session) {
+        m_reconnectTimer->stop();
+        m_reconnectDelayMs = 0;
+        m_giveUpReconnecting = false;
+        startSession();
+    } else if (!m_model->rootPath().isEmpty()) {
+        m_session->checkConnection();
+    }
+}
+
+void SftpDock::scheduleReconnect()
+{
+    constexpr int kFirstDelayMs = 2000;
+    constexpr int kMaxDelayMs = 60000;
+    m_reconnectDelayMs = m_reconnectDelayMs ? qMin(m_reconnectDelayMs * 2, kMaxDelayMs) : kFirstDelayMs;
+    m_reconnectTimer->start(m_reconnectDelayMs);
+}
+
+void SftpDock::onSessionLost()
+{
+    teardownSession();
+    m_model->setRoot(QString());
+    updatePathLabel();
+    m_upAction->setEnabled(false);
+    setStatus(QStringLiteral("Connection lost - reconnecting..."));
+    scheduleReconnect();
 }
 
 void SftpDock::attachSession(SftpSession *session)
@@ -802,6 +869,7 @@ void SftpDock::attachSession(SftpSession *session)
 
     connect(session, &SftpSession::connected, this, &SftpDock::onConnected);
     connect(session, &SftpSession::connectFailed, this, &SftpDock::onConnectFailed);
+    connect(session, &SftpSession::disconnected, this, &SftpDock::onSessionLost);
     connect(session, &SftpSession::directoryListed, this, &SftpDock::onDirectoryListed);
     connect(session, &SftpSession::operationFailed, this, &SftpDock::onOperationFailed);
     connect(session, &SftpSession::operationSucceeded, this, &SftpDock::onOperationSucceeded);
@@ -813,14 +881,23 @@ void SftpDock::attachSession(SftpSession *session)
 
 void SftpDock::onConnected(const QString &homePath)
 {
+    m_reconnectDelayMs = 0;
+    m_giveUpReconnecting = false;
     m_model->setRoot(homePath);
     setStatus(QStringLiteral("Connected: %1").arg(homePath));
     enterDirectory(QModelIndex()); // the model's invisible root *is* homePath
 }
 
-void SftpDock::onConnectFailed(const QString &message)
+void SftpDock::onConnectFailed(const QString &message, bool retryable)
 {
-    setStatus(QStringLiteral("Connection failed: %1").arg(message));
+    teardownSession();
+    m_giveUpReconnecting = !retryable;
+    if (retryable) {
+        scheduleReconnect();
+        setStatus(QStringLiteral("Connection failed: %1 - retrying in %2 s").arg(message).arg(m_reconnectDelayMs / 1000));
+    } else {
+        setStatus(QStringLiteral("Connection failed: %1 (Refresh to try again)").arg(message));
+    }
 }
 
 void SftpDock::enterDirectory(const QModelIndex &dir)
@@ -1283,8 +1360,14 @@ void SftpDock::renameSelected()
 
 void SftpDock::refresh()
 {
-    if (!m_session)
+    if (!m_session) {
+        if (m_settings) {
+            m_reconnectTimer->stop();
+            m_giveUpReconnecting = false;
+            startSession();
+        }
         return;
+    }
 
     const QModelIndex dir = m_view->rootIndex();
     const QString path = m_model->pathForIndex(dir);

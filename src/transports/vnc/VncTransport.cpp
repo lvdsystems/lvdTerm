@@ -4,6 +4,7 @@
 #include <QLineEdit>
 
 #include "VncClient.h"
+#include "ui/PromptParent.h"
 
 VncTransport::VncTransport(VncConnectionSettings settings, QObject *parent)
     : Transport(parent)
@@ -12,7 +13,7 @@ VncTransport::VncTransport(VncConnectionSettings settings, QObject *parent)
 {
     m_client->setPasswordProvider([this](QString &password) {
         bool ok = false;
-        password = QInputDialog::getText(nullptr, QStringLiteral("VNC Password"),
+        password = QInputDialog::getText(promptParent(), QStringLiteral("VNC Password"),
                                          QStringLiteral("Password for %1:").arg(m_settings.host), QLineEdit::Password, QString(), &ok);
         return ok;
     });

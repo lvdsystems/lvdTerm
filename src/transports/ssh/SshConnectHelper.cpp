@@ -11,12 +11,49 @@
 #include <unistd.h>
 #endif
 
+#include <mutex>
+
 #include <QDir>
+#include <QElapsedTimer>
+#include <QHash>
 #include <QMetaObject>
 #include <QStandardPaths>
 
 namespace
 {
+// Bound on any single blocking libssh2 call during connect/handshake/auth.
+// (SO_RCVTIMEO doesn't do this: libssh2 switches the socket to non-blocking for
+// the handshake and waits by itself, with no limit unless it is given this one.)
+constexpr long kHandshakeTimeoutMs = 30000;
+
+// How long "no" to a host key also answers the other connections to that host.
+constexpr qint64 kRejectionMemoryMs = 10000;
+
+// Serializes "check known_hosts, ask, save". Only ever taken on worker threads,
+// so holding it across the prompt can't block the GUI thread that shows it.
+std::mutex &hostKeyMutex()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
+// Keys the user just rejected, by host:port:fingerprint. Guarded by hostKeyMutex().
+QHash<QString, qint64> &recentRejections()
+{
+    static QHash<QString, qint64> rejections;
+    return rejections;
+}
+
+qint64 monotonicMs()
+{
+    static QElapsedTimer timer = [] {
+        QElapsedTimer t;
+        t.start();
+        return t;
+    }();
+    return timer.elapsed();
+}
+
 QString hostKeyTypeMask(int libssh2HostkeyType, int *outKnownhostKeyBit)
 {
     switch (libssh2HostkeyType) {
@@ -74,8 +111,14 @@ QString knownHostsPath()
 
 libssh2_socket_t connectSocket(const QString &host, quint16 port, QString *error)
 {
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    // Once per process and never undone. Winsock is reference counted, and when
+    // the count reaches zero every socket in the process dies - including other
+    // panes' live connections, which is what a per-connection WSACleanup() did.
+    static const bool winsockStarted = [] {
+        WSADATA wsaData;
+        return WSAStartup(MAKEWORD(2, 2), &wsaData) == 0;
+    }();
+    if (!winsockStarted) {
         if (error)
             *error = QStringLiteral("WSAStartup failed");
         return LIBSSH2_INVALID_SOCKET;
@@ -191,11 +234,10 @@ void clearSocketTimeouts(libssh2_socket_t socket)
     setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&noTimeout), sizeof(noTimeout));
 }
 
-void closeSocketAndCleanup(libssh2_socket_t socket)
+void closeSocket(libssh2_socket_t socket)
 {
     if (socket != LIBSSH2_INVALID_SOCKET)
         closesocket(socket);
-    WSACleanup();
 }
 
 #else // POSIX (Linux)
@@ -289,7 +331,7 @@ void clearSocketTimeouts(libssh2_socket_t socket)
     setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &noTimeout, sizeof(noTimeout));
 }
 
-void closeSocketAndCleanup(libssh2_socket_t socket)
+void closeSocket(libssh2_socket_t socket)
 {
     if (socket != LIBSSH2_INVALID_SOCKET)
         close(socket);
@@ -300,6 +342,8 @@ void closeSocketAndCleanup(libssh2_socket_t socket)
 bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket, const QString &host, quint16 port, QObject *promptTarget,
                                 QString *error)
 {
+    libssh2_session_set_timeout(session, kHandshakeTimeoutMs);
+
     if (libssh2_session_handshake(session, socket) != 0) {
         char *errmsg = nullptr;
         libssh2_session_last_error(session, &errmsg, nullptr, 0);
@@ -316,6 +360,9 @@ bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket
             *error = QStringLiteral("Server did not present a host key");
         return false;
     }
+
+    // From here to the end: one connection at a time, see the header.
+    std::lock_guard<std::mutex> hostKeyLock(hostKeyMutex());
 
     LIBSSH2_KNOWNHOSTS *hosts = libssh2_knownhost_init(session);
     if (hosts)
@@ -350,9 +397,17 @@ bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket
                           .arg(host, keyTypeName, fingerprint);
         }
 
+        const QString rejectionKey = QStringLiteral("%1:%2:%3").arg(host).arg(port).arg(fingerprint);
+        const auto rejected = recentRejections().constFind(rejectionKey);
         bool accepted = false;
-        QMetaObject::invokeMethod(promptTarget, "confirmHostKey", Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, accepted),
-                                   Q_ARG(QString, message));
+        if (rejected == recentRejections().constEnd() || monotonicMs() - rejected.value() > kRejectionMemoryMs) {
+            QMetaObject::invokeMethod(promptTarget, "confirmHostKey", Qt::BlockingQueuedConnection, Q_RETURN_ARG(bool, accepted),
+                                       Q_ARG(QString, message));
+            if (accepted)
+                recentRejections().remove(rejectionKey);
+            else
+                recentRejections().insert(rejectionKey, monotonicMs());
+        }
 
         if (!accepted) {
             if (hosts)
@@ -415,6 +470,24 @@ bool authenticate(LIBSSH2_SESSION *session, const SshConnectionSettings &setting
     }
 
     return ok;
+}
+
+bool isConnectionError(LIBSSH2_SESSION *session)
+{
+    switch (libssh2_session_last_errno(session)) {
+    case LIBSSH2_ERROR_SOCKET_NONE:
+    case LIBSSH2_ERROR_SOCKET_SEND:
+    case LIBSSH2_ERROR_SOCKET_RECV:
+    case LIBSSH2_ERROR_SOCKET_DISCONNECT:
+    case LIBSSH2_ERROR_SOCKET_TIMEOUT:
+    case LIBSSH2_ERROR_BAD_SOCKET:
+    case LIBSSH2_ERROR_TIMEOUT:
+    case LIBSSH2_ERROR_CHANNEL_CLOSED:
+    case LIBSSH2_ERROR_CHANNEL_EOF_SENT:
+        return true;
+    default:
+        return false;
+    }
 }
 
 } // namespace SshConnectHelper

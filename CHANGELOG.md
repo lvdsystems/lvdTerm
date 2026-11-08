@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0
+
+### Bugfix
+- Closing any SSH or SFTP connection could kill the other live connections on
+  Windows (a Winsock reference-count bug). It showed up as panes reconnecting and
+  the SFTP dock dropping, for instance when switching between panes of different hosts.
+- SFTP dock: follows its terminal again. It notices a dead connection (also while
+  idle), reconnects by itself, reconnects as soon as its terminal does, and picks up
+  a password corrected at the terminal's prompt. A login that was refused or a host
+  key that was rejected isn't retried on its own; Refresh tries again.
+- New host: one host key prompt, not one each for the terminal and the SFTP dock.
+- Freezes: a burst of terminal output, a large paste into a local shell that isn't
+  reading, closing a local shell, and closing or reconnecting an RDP pane could each
+  block the whole window, the last two possibly for good. Connecting to a host that
+  accepts the connection but never answers now times out, and so does a dead SFTP
+  connection, instead of waiting forever.
+- Connection prompts (host key, password, RDP/VNC credentials) can no longer open
+  behind other windows and leave the main window ignoring clicks.
+- SSH X11 forwarding: fixed memory corruption when a remote X program started while
+  others were running, and a stalled paste into a busy remote program.
+
+### New Features
+- If the window ever stops responding for 10 seconds, where it is stuck is written
+  to hang.log in the application data folder.
+
 ## 0.7
 
 ### New Features

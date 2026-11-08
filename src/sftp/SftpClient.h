@@ -10,6 +10,8 @@
 
 #include "transports/ssh/SshConnectionSettings.h"
 
+class QTimer;
+
 struct SftpEntry
 {
     QString name;
@@ -35,6 +37,11 @@ Q_DECLARE_METATYPE(SftpEntry)
 //
 // Connect/verify/auth logic is shared with SshWorker via
 // SshConnectHelper - both sessions must agree on what "trusted" means.
+//
+// A session that dies (network gone, server restarted) reports disconnected():
+// noticed when an operation fails on it, or by a periodic round trip while idle.
+// Every blocking call is bounded, so a silently dead connection can't wedge this
+// thread - and with it every operation queued behind - forever.
 class SftpClient : public QObject
 {
     Q_OBJECT
@@ -50,6 +57,7 @@ public slots:
     void connectToHost();
     void disconnectFromHost();
 
+    void checkConnection(); // a round trip to the server; disconnected() if it is gone
     void listDirectory(const QString &path);
     void downloadFile(const QString &remotePath, const QString &localPath);
     void uploadFile(const QString &localPath, const QString &remotePath);
@@ -67,7 +75,10 @@ public slots:
 
 signals:
     void connected(const QString &homePath);
-    void connectFailed(const QString &message);
+    // `retryable`: false when trying again by itself would not help or would do
+    // harm - a rejected host key would ask again, wrong credentials would count
+    // against the server's login limits.
+    void connectFailed(const QString &message, bool retryable);
     void disconnected();
 
     void directoryListed(const QString &path, const QVector<SftpEntry> &entries);
@@ -81,6 +92,7 @@ signals:
 private:
     void teardown();
     QString lastSftpError() const;
+    void onOperationFailed(); // drops the session if the failure means it is dead
 
     // Shared by the single-file and recursive-directory entry points, so
     // a directory transfer doesn't emit a misleading operationSucceeded
@@ -105,4 +117,5 @@ private:
     libssh2_socket_t m_socket = LIBSSH2_INVALID_SOCKET;
     LIBSSH2_SESSION *m_session = nullptr;
     LIBSSH2_SFTP *m_sftp = nullptr;
+    QTimer *m_idleCheck = nullptr; // see checkConnection()
 };

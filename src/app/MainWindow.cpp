@@ -708,9 +708,16 @@ void MainWindow::wireView(TerminalView *view)
                 movePane(source, target, zone);
         });
     });
-    connect(view, &TerminalView::stateChanged, this, [this, view] {
+    connect(view, &TerminalView::stateChanged, this, [this, view](Transport::State state) {
         if (QWidget *root = tabRootOf(view))
             updateTabIcon(root);
+        // The SFTP dock follows its terminal back up after a connection drop.
+        if (state == Transport::State::Connected && view->sshSettings())
+            m_sftpDock->connectionUp(*view->sshSettings());
+    });
+    connect(view, &TerminalView::sshSettingsChanged, this, [this, view] {
+        if (view == currentActiveView())
+            m_sftpDock->setActiveConnection(view->sshSettings());
     });
 }
 

@@ -139,6 +139,8 @@ signals:
     // Transport's own signals directly.
     void stateChanged(Transport::State state);
     void errorOccurred(const QString &message);
+    // sshSettings() changed while connected: a password corrected at the prompt.
+    void sshSettingsChanged();
     // Right-click inside the pane (terminal, or hex dump) - MainWindow
     // owns what the menu offers, since every item acts on the pane tree.
     void contextMenuRequested(const QPoint &globalPos);

@@ -1,7 +1,12 @@
 #include "RdpClient.h"
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 
+#include <QCoreApplication>
 #include <QMetaObject>
 #include <QThread>
 
@@ -19,6 +24,8 @@
 #include <freerdp/settings.h>
 #include <winpr/synch.h>
 #include <winpr/wlog.h>
+
+#include "core/ThreadReaper.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -43,21 +50,45 @@ struct InputEvent
 };
 } // namespace
 
-// The session: owns the FreeRDP instance and runs its event loop.
+struct RdpClient::Shared
+{
+    // Reaches the client's signals from the session thread, as long as there is a client.
+    template <typename Function>
+    void post(Function function)
+    {
+        std::lock_guard<std::mutex> lock(ownerMutex);
+        if (RdpClient *client = owner)
+            QMetaObject::invokeMethod(client, [client, function] { function(client); }, Qt::QueuedConnection);
+    }
+
+    std::mutex ownerMutex;
+    RdpClient *owner = nullptr;
+
+    std::atomic<bool> ready{false};
+    std::atomic<bool> framePosted{false}; // one repaint request at a time: they are cheap to merge
+
+    std::mutex imageMutex;
+    QImage image; // the framebuffer copy
+
+    std::mutex clipboardMutex;
+    QString localClipboard; // as last set by setLocalClipboardText()
+};
+
+// The session: owns the FreeRDP instance and runs its event loop. Deleted by
+// ThreadReaper once it finishes, which can be after its RdpClient is gone.
 class RdpThread : public QThread
 {
 public:
-    RdpThread(RdpClient *client, const RdpConnectionSettings &settings)
-        : m_client(client)
+    RdpThread(std::shared_ptr<RdpClient::Shared> shared, const RdpConnectionSettings &settings, RdpClient::CredentialProvider credentialProvider)
+        : m_shared(std::move(shared))
         , m_settings(settings)
+        , m_credentialProvider(std::move(credentialProvider))
         , m_wake(CreateEventA(nullptr, TRUE, FALSE, nullptr))
     {
     }
 
     ~RdpThread() override
     {
-        requestStop();
-        wait();
         if (m_wake)
             CloseHandle(m_wake);
     }
@@ -65,8 +96,11 @@ public:
     void requestStop()
     {
         m_stop = true;
-        if (rdpContext *context = m_context.load())
-            freerdp_abort_connect_context(context);
+        {
+            std::lock_guard<std::mutex> lock(m_contextMutex); // run() frees the context under this
+            if (rdpContext *context = m_context.load())
+                freerdp_abort_connect_context(context);
+        }
         if (m_wake)
             SetEvent(m_wake);
     }
@@ -119,10 +153,14 @@ private:
     void applySettings(rdpSettings *settings);
     void drainInput(rdpContext *context);
     QString errorText(rdpContext *context, freerdp *instance) const;
+    void notifyFrameChanged();
+    QString localClipboardText() const;
 
-    RdpClient *m_client;
+    std::shared_ptr<RdpClient::Shared> m_shared;
     RdpConnectionSettings m_settings;
+    RdpClient::CredentialProvider m_credentialProvider;
     HANDLE m_wake;
+    std::mutex m_contextMutex;
     std::atomic<bool> m_stop{false};
     std::atomic<rdpContext *> m_context{nullptr};
 
@@ -183,8 +221,10 @@ void RdpThread::run()
 
     freerdp *instance = freerdp_new();
     if (!instance) {
-        emit m_client->failed(QStringLiteral("Could not initialise the RDP library"));
-        emit m_client->closed();
+        m_shared->post([](RdpClient *client) {
+            emit client->failed(QStringLiteral("Could not initialise the RDP library"));
+            emit client->closed();
+        });
         return;
     }
     instance->ContextSize = sizeof(Context);
@@ -195,8 +235,10 @@ void RdpThread::run()
 
     if (!freerdp_context_new(instance)) {
         freerdp_free(instance);
-        emit m_client->failed(QStringLiteral("Could not create the RDP session"));
-        emit m_client->closed();
+        m_shared->post([](RdpClient *client) {
+            emit client->failed(QStringLiteral("Could not create the RDP session"));
+            emit client->closed();
+        });
         return;
     }
     rdpContext *context = instance->context;
@@ -249,15 +291,21 @@ void RdpThread::run()
         freerdp_disconnect(instance);
     }
 
-    m_context = nullptr;
-    m_client->m_ready = false;
+    {
+        std::lock_guard<std::mutex> lock(m_contextMutex);
+        m_context = nullptr;
+    }
+    m_shared->ready = false;
     freerdp_context_free(instance);
     freerdp_free(instance);
 
-    if (!failure.isEmpty() && !m_stop)
-        emit m_client->failed(failure);
     (void)connected;
-    emit m_client->closed();
+    const bool report = !failure.isEmpty() && !m_stop;
+    m_shared->post([report, failure](RdpClient *client) {
+        if (report)
+            emit client->failed(failure);
+        emit client->closed();
+    });
 #ifdef _WIN32
     WSACleanup();
 #endif
@@ -391,7 +439,7 @@ UINT RdpThread::clipMonitorReady(CliprdrClientContext *clip, const CLIPRDR_MONIT
 
 void RdpThread::sendClipboardFormats()
 {
-    if (!m_cliprdr || !m_clipboardReady || m_client->localClipboardText().isEmpty())
+    if (!m_cliprdr || !m_clipboardReady || localClipboardText().isEmpty())
         return;
 
     CLIPRDR_FORMAT formats[1] = {};
@@ -437,7 +485,7 @@ UINT RdpThread::clipServerFormatListResponse(CliprdrClientContext *, const CLIPR
 UINT RdpThread::clipServerFormatDataRequest(CliprdrClientContext *clip, const CLIPRDR_FORMAT_DATA_REQUEST *request)
 {
     auto *self = static_cast<RdpThread *>(clip->custom);
-    QString text = self->m_client->localClipboardText();
+    QString text = self->localClipboardText();
     // Windows clipboard text has CRLF line ends.
     text.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).replace(QLatin1Char('\n'), QStringLiteral("\r\n"));
 
@@ -479,7 +527,7 @@ UINT RdpThread::clipServerFormatDataResponse(CliprdrClientContext *clip, const C
     if (nul >= 0)
         text.truncate(nul);
     text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    emit self->m_client->remoteClipboardText(text);
+    self->m_shared->post([text](RdpClient *client) { emit client->remoteClipboardText(text); });
     return CHANNEL_RC_OK;
 }
 
@@ -494,8 +542,8 @@ BOOL RdpThread::postConnect(freerdp *instance)
 
     RdpThread *self = threadOf(instance);
     self->reallocImage(static_cast<int>(context->gdi->width), static_cast<int>(context->gdi->height));
-    self->m_client->m_ready = true;
-    emit self->m_client->ready();
+    self->m_shared->ready = true;
+    self->m_shared->post([](RdpClient *client) { emit client->ready(); });
     return TRUE;
 }
 
@@ -506,9 +554,9 @@ void RdpThread::postDisconnect(freerdp *instance)
 
 void RdpThread::reallocImage(int w, int h)
 {
-    std::lock_guard<std::mutex> lock(m_client->m_imageMutex);
-    m_client->m_image = QImage(w, h, QImage::Format_RGB32);
-    m_client->m_image.fill(Qt::black);
+    std::lock_guard<std::mutex> lock(m_shared->imageMutex);
+    m_shared->image = QImage(w, h, QImage::Format_RGB32);
+    m_shared->image.fill(Qt::black);
 }
 
 void RdpThread::copyRect(int x, int y, int w, int h)
@@ -517,8 +565,8 @@ void RdpThread::copyRect(int x, int y, int w, int h)
     if (!gdi || !gdi->primary_buffer)
         return;
 
-    std::lock_guard<std::mutex> lock(m_client->m_imageMutex);
-    QImage &image = m_client->m_image;
+    std::lock_guard<std::mutex> lock(m_shared->imageMutex);
+    QImage &image = m_shared->image;
     if (image.isNull())
         return;
     x = qBound(0, x, image.width());
@@ -544,7 +592,7 @@ BOOL RdpThread::endPaint(rdpContext *context)
 
     RdpThread *self = threadOf(context);
     self->copyRect(hwnd->invalid->x, hwnd->invalid->y, hwnd->invalid->w, hwnd->invalid->h);
-    emit self->m_client->frameChanged();
+    self->notifyFrameChanged();
     return TRUE;
 }
 
@@ -558,54 +606,100 @@ BOOL RdpThread::desktopResize(rdpContext *context)
     RdpThread *self = threadOf(context);
     self->reallocImage(static_cast<int>(w), static_cast<int>(h));
     self->copyRect(0, 0, static_cast<int>(w), static_cast<int>(h));
-    emit self->m_client->frameChanged();
+    self->notifyFrameChanged();
     return TRUE;
+}
+
+void RdpThread::notifyFrameChanged()
+{
+    if (m_shared->framePosted.exchange(true))
+        return;
+    m_shared->post([shared = m_shared](RdpClient *client) {
+        shared->framePosted = false;
+        emit client->frameChanged();
+    });
+}
+
+QString RdpThread::localClipboardText() const
+{
+    std::lock_guard<std::mutex> lock(m_shared->clipboardMutex);
+    return m_shared->localClipboard;
 }
 
 BOOL RdpThread::authenticate(freerdp *instance, char **username, char **password, char **domain, rdp_auth_reason)
 {
     RdpThread *self = threadOf(instance);
-    if (self->m_stop || !self->m_client->m_credentialProvider)
+    if (self->m_stop || !self->m_credentialProvider)
         return FALSE;
 
-    QString user = QString::fromUtf8(*username ? *username : "");
-    QString pass = QString::fromUtf8(*password ? *password : "");
-    QString dom = QString::fromUtf8(*domain ? *domain : "");
+    struct Request
+    {
+        std::mutex mutex;
+        std::condition_variable answered;
+        bool done = false;
+        bool accepted = false;
+        QString user;
+        QString password;
+        QString domain;
+    };
+    auto request = std::make_shared<Request>();
+    request->user = QString::fromUtf8(*username ? *username : "");
+    request->password = QString::fromUtf8(*password ? *password : "");
+    request->domain = QString::fromUtf8(*domain ? *domain : "");
 
-    // The credential dialog belongs to the GUI thread; this one waits.
-    bool accepted = false;
-    QMetaObject::invokeMethod(
-        self->m_client, [&] { accepted = self->m_client->m_credentialProvider(user, pass, dom); }, Qt::BlockingQueuedConnection);
-    if (!accepted)
+    // The credential dialog belongs to the GUI thread. Not a blocking call: this
+    // thread has to keep noticing a stop request instead of waiting on the GUI
+    // thread unconditionally, and the dialog may outlive this thread.
+    QMetaObject::invokeMethod(qApp, [request, provider = self->m_credentialProvider] {
+        QString user = request->user;
+        QString pass = request->password;
+        QString dom = request->domain;
+        const bool accepted = provider(user, pass, dom);
+        std::lock_guard<std::mutex> lock(request->mutex);
+        request->accepted = accepted;
+        request->user = user;
+        request->password = pass;
+        request->domain = dom;
+        request->done = true;
+        request->answered.notify_all();
+    }, Qt::QueuedConnection);
+
+    std::unique_lock<std::mutex> lock(request->mutex);
+    while (!request->done) {
+        if (self->m_stop)
+            return FALSE;
+        request->answered.wait_for(lock, std::chrono::milliseconds(200));
+    }
+    if (!request->accepted)
         return FALSE;
 
     free(*username);
     free(*password);
     free(*domain);
-    *username = dup(user);
-    *password = dup(pass);
-    *domain = dup(dom);
+    *username = dup(request->user);
+    *password = dup(request->password);
+    *domain = dup(request->domain);
     return TRUE;
 }
 
 RdpClient::RdpClient(QObject *parent)
     : QObject(parent)
+    , m_shared(std::make_shared<Shared>())
 {
 }
 
-QString RdpClient::localClipboardText() const
+bool RdpClient::isReady() const
 {
-    std::lock_guard<std::mutex> lock(m_clipboardMutex);
-    return m_localClipboard;
+    return m_shared->ready;
 }
 
 void RdpClient::setLocalClipboardText(const QString &text)
 {
     {
-        std::lock_guard<std::mutex> lock(m_clipboardMutex);
-        if (text == m_localClipboard)
+        std::lock_guard<std::mutex> lock(m_shared->clipboardMutex);
+        if (text == m_shared->localClipboard)
             return;
-        m_localClipboard = text;
+        m_shared->localClipboard = text;
     }
     if (!m_thread)
         return;
@@ -622,32 +716,48 @@ RdpClient::~RdpClient()
 void RdpClient::connectToHost(const RdpConnectionSettings &settings)
 {
     close();
-    m_ready = false;
-    m_thread = std::make_unique<RdpThread>(this, settings);
+
+    auto shared = std::make_shared<Shared>();
+    shared->owner = this;
+    {
+        std::lock_guard<std::mutex> lock(m_shared->clipboardMutex);
+        shared->localClipboard = m_shared->localClipboard;
+    }
+    m_shared = std::move(shared);
+
+    m_thread = new RdpThread(m_shared, settings, m_credentialProvider);
     m_thread->start();
 }
 
 void RdpClient::close()
 {
+    {
+        std::lock_guard<std::mutex> lock(m_shared->ownerMutex);
+        m_shared->owner = nullptr; // nothing from the session reaches this object any more
+    }
+    m_shared->ready = false;
+
     if (m_thread) {
         m_thread->requestStop();
-        m_thread->wait();
-        m_thread.reset();
+        if (m_thread->isFinished())
+            delete m_thread;
+        else
+            ThreadReaper::detach(m_thread);
+        m_thread = nullptr;
     }
-    m_ready = false;
 }
 
 QSize RdpClient::desktopSize() const
 {
-    std::lock_guard<std::mutex> lock(m_imageMutex);
-    return m_image.size();
+    std::lock_guard<std::mutex> lock(m_shared->imageMutex);
+    return m_shared->image.size();
 }
 
 void RdpClient::paintTo(QPainter *painter, const QRectF &target) const
 {
-    std::lock_guard<std::mutex> lock(m_imageMutex);
-    if (!m_image.isNull())
-        painter->drawImage(target, m_image);
+    std::lock_guard<std::mutex> lock(m_shared->imageMutex);
+    if (!m_shared->image.isNull())
+        painter->drawImage(target, m_shared->image);
 }
 
 void RdpClient::sendMouse(int x, int y, Qt::MouseButtons, Qt::MouseButton changed, bool pressed)

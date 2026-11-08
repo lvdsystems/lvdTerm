@@ -1,10 +1,7 @@
 #pragma once
 
-#include <atomic>
-#include <deque>
 #include <functional>
 #include <memory>
-#include <mutex>
 
 #include <QImage>
 #include <QObject>
@@ -20,6 +17,10 @@ class RdpThread;
 // the session runs on its own thread; the remote desktop is drawn by
 // FreeRDP's software GDI and copied into an image that the widget paints
 // from (paintTo()), under a mutex.
+//
+// The session thread never holds up the GUI thread, and the other way around:
+// close() only asks it to stop and returns, however long FreeRDP takes to notice
+// (a dead network can take a while). It finishes on its own afterwards.
 //
 // Supported: NLA/TLS/RDP security, the legacy bitmap and RemoteFX paths,
 // mouse, keyboard (scan codes, plus Unicode for printable text), text
@@ -39,15 +40,16 @@ public:
     explicit RdpClient(QObject *parent = nullptr);
     ~RdpClient() override;
 
-    // Called (on the GUI thread, blocking the session) when the server wants
-    // credentials that were not supplied or were rejected. Returns false to
-    // abort the connection.
+    // Called on the GUI thread, with the session waiting for the answer, when the
+    // server wants credentials that were not supplied or were rejected. Returns
+    // false to abort the connection. May outlive this client (a dialog can still
+    // be open when it goes away), so it must not refer to it or its owner.
     using CredentialProvider = std::function<bool(QString &username, QString &password, QString &domain)>;
     void setCredentialProvider(CredentialProvider provider) { m_credentialProvider = std::move(provider); }
 
     void connectToHost(const RdpConnectionSettings &settings);
-    void close(); // stops the session and waits for its thread
-    bool isReady() const { return m_ready.load(); }
+    void close(); // asks the session to stop; returns immediately
+    bool isReady() const;
 
     QSize desktopSize() const;
     // Draws the remote desktop scaled into `target`.
@@ -72,19 +74,10 @@ signals:
     void remoteClipboardText(const QString &text);
 
 private:
+    struct Shared; // what the session thread uses, which may outlive this object
     friend class RdpThread;
 
     CredentialProvider m_credentialProvider;
-    std::atomic<bool> m_ready{false};
-
-    // The local clipboard text, as last set by setLocalClipboardText().
-    mutable std::mutex m_clipboardMutex;
-    QString m_localClipboard;
-    QString localClipboardText() const;
-
-    // The framebuffer copy.
-    mutable std::mutex m_imageMutex;
-    QImage m_image;
-
-    std::unique_ptr<RdpThread> m_thread;
+    std::shared_ptr<Shared> m_shared;
+    RdpThread *m_thread = nullptr;
 };

@@ -331,6 +331,9 @@ bool VncClient::stepAuthChallenge()
             fail(QStringLiteral("Cancelled"));
             return false;
         }
+        // The prompt ran a nested event loop: the connection may be gone by now.
+        if (m_stage != Stage::AuthChallenge || !m_socket)
+            return false;
         m_password = entered;
     }
 

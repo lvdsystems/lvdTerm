@@ -35,6 +35,10 @@ libssh2_socket_t connectSocket(const QString &host, quint16 port, QString *error
 // thread. On acceptance of a new/changed key, updates the known_hosts
 // file. Returns false on failure or if the user rejects the key, with
 // *error set.
+//
+// Checking, asking and saving happen one connection at a time: a pane and its
+// SFTP session connect to a new host at the same moment, and the second one
+// finds the key already accepted (or just rejected) instead of asking again.
 bool handshakeAndVerifyHostKey(LIBSSH2_SESSION *session, libssh2_socket_t socket, const QString &host, quint16 port, QObject *promptTarget,
                                 QString *error);
 
@@ -63,11 +67,12 @@ bool authenticate(LIBSSH2_SESSION *session, const SshConnectionSettings &setting
 void clearSocketTimeouts(libssh2_socket_t socket);
 
 // Closes a socket returned by connectSocket() (safe to call with
-// LIBSSH2_INVALID_SOCKET - a no-op then) and releases whatever
-// per-process state closing it needs released (WSACleanup() on Windows;
-// nothing further on POSIX). Both SshWorker and SftpClient had their own
-// copy of this exact teardown sequence; call this instead of
-// duplicating it a third time.
-void closeSocketAndCleanup(libssh2_socket_t socket);
+// LIBSSH2_INVALID_SOCKET - a no-op then). Winsock itself stays started for
+// the life of the process, see connectSocket().
+void closeSocket(libssh2_socket_t socket);
+
+// True if libssh2's last error on this session means the connection itself is
+// gone or stuck (as opposed to a request the server merely refused).
+bool isConnectionError(LIBSSH2_SESSION *session);
 
 } // namespace SshConnectHelper
