@@ -62,6 +62,10 @@ SerialSettingsWidget::SerialSettingsWidget(QWidget *parent)
     form->addRow(QStringLiteral("Stop bits:"), m_stopBitsCombo);
     form->addRow(QStringLiteral("Flow control:"), m_flowControlCombo);
 
+    // Tab follows the layout: Refresh sits right of the port, before Baud
+    // rate (it is created after the combos, which Tab would follow).
+    setTabOrder(m_portCombo, refreshButton);
+
     refreshPorts();
 }
 

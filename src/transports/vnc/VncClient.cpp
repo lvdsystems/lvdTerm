@@ -9,6 +9,7 @@
 #include <zlib.h>
 
 #include "JpegDecoder.h"
+#include "VncTls.h"
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 #include <openssl/des.h>
@@ -122,6 +123,7 @@ void VncClient::connectToHost(const QString &host, quint16 port, const QString &
     m_port = port;
     m_password = password;
     m_maxMinor = 8;
+    m_allowTls = true;
     startConnection();
 }
 
@@ -131,6 +133,7 @@ void VncClient::startConnection()
     m_failedAlready = false;
     m_buf.clear();
     m_pos = 0;
+    m_plainOffered = false;
     m_stage = Stage::Version;
 
     m_socket = new QTcpSocket(this);
@@ -145,6 +148,10 @@ void VncClient::startConnection()
             // (onSocketClosed() handles it), not a failure.
             if (m_stage == Stage::Running || retryOlderProtocol())
                 return;
+        }
+        if (m_stage == Stage::TlsHandshake) {
+            failTls(m_socket->errorString());
+            return;
         }
         fail(m_socket->errorString());
     });
@@ -166,6 +173,7 @@ bool VncClient::retryOlderProtocol()
 void VncClient::close()
 {
     m_stage = Stage::Idle;
+    m_tls.reset();
     if (m_socket) {
         m_socket->disconnect(this);
         m_socket->abort();
@@ -193,6 +201,8 @@ void VncClient::onSocketClosed()
         emit closed();
     } else if (retryOlderProtocol()) {
         return;
+    } else if (m_stage == Stage::TlsHandshake) {
+        failTls(QStringLiteral("The server closed the connection during the TLS handshake"));
     } else {
         fail(QStringLiteral("Connection closed by the server"));
     }
@@ -202,7 +212,10 @@ void VncClient::onReadyRead()
 {
     const QByteArray chunk = m_socket->readAll();
     m_stats.bytesIn += static_cast<quint64>(chunk.size());
-    m_buf.append(chunk);
+    if (m_tls)
+        feedTls(chunk); // decrypted data lands in m_buf
+    else
+        m_buf.append(chunk);
     QElapsedTimer timer;
     timer.start();
     while (m_stage != Stage::Idle && step()) {
@@ -221,6 +234,11 @@ bool VncClient::step()
     switch (m_stage) {
     case Stage::Version: return stepVersion();
     case Stage::SecurityTypes: return stepSecurityTypes();
+    case Stage::VeNCryptVersion: return stepVeNCryptVersion();
+    case Stage::VeNCryptStatus: return stepVeNCryptStatus();
+    case Stage::VeNCryptSubtypes: return stepVeNCryptSubtypes();
+    case Stage::VeNCryptAck: return stepVeNCryptAck();
+    case Stage::TlsHandshake: return false; // feedTls() moves on from here
     case Stage::AuthChallenge: return stepAuthChallenge();
     case Stage::SecurityResult: return stepSecurityResult();
     case Stage::SecurityReason: return stepSecurityReason();
@@ -253,7 +271,7 @@ bool VncClient::stepVersion()
         m_minor = 3;
     m_minor = qMin(m_minor, m_maxMinor);
 
-    m_socket->write(QByteArray("RFB 003.00") + QByteArray::number(m_minor) + '\n');
+    send(QByteArray("RFB 003.00") + QByteArray::number(m_minor) + '\n');
     m_stage = Stage::SecurityTypes;
     return true;
 }
@@ -269,6 +287,10 @@ void VncClient::beginSecurity(quint8 type)
         }
     } else if (type == 2) { // VNC Authentication
         m_stage = Stage::AuthChallenge;
+    } else if (type == 18) { // TLS: anonymous TLS, then the inner types are listed again
+        startTls(false, AfterTls::SecurityTypes);
+    } else if (type == 19) { // VeNCrypt
+        m_stage = Stage::VeNCryptVersion;
     } else {
         fail(QStringLiteral("Unsupported VNC security type %1").arg(type));
     }
@@ -302,20 +324,290 @@ bool VncClient::stepSecurityTypes()
 
     bool hasNone = false;
     bool hasVncAuth = false;
+    bool hasTls = false;
+    bool hasVeNCrypt = false;
+    QStringList offered;
     for (int i = 0; i < count; ++i) {
-        hasNone = hasNone || u8(1 + i) == 1;
-        hasVncAuth = hasVncAuth || u8(1 + i) == 2;
+        const quint8 type = u8(1 + i);
+        offered.append(QString::number(type));
+        hasNone = hasNone || type == 1;
+        hasVncAuth = hasVncAuth || type == 2;
+        hasTls = hasTls || type == 18;
+        hasVeNCrypt = hasVeNCrypt || type == 19;
     }
     consume(1 + count);
 
-    if (!hasNone && !hasVncAuth) {
-        fail(QStringLiteral("The server requires a security type lvdterm does not support (only None and VNC password)"));
+    // Once inside TLS (type 18's inner list) only the plain types make sense.
+    const bool canEncrypt = m_allowTls && !m_tls;
+    if (!m_tls)
+        m_plainOffered = hasNone || hasVncAuth;
+
+    quint8 chosen = 0;
+    if (canEncrypt && hasVeNCrypt)
+        chosen = 19;
+    else if (canEncrypt && hasTls)
+        chosen = 18;
+    else if (hasNone)
+        chosen = 1;
+    else if (hasVncAuth)
+        chosen = 2;
+
+    if (chosen == 0) {
+        fail(QStringLiteral("The server requires a security type lvdterm does not support (offered: %1)").arg(offered.join(QStringLiteral(", "))));
         return false;
     }
-    const quint8 chosen = hasNone ? 1 : 2;
-    m_socket->write(QByteArray(1, static_cast<char>(chosen)));
+    send(QByteArray(1, static_cast<char>(chosen)));
     beginSecurity(chosen);
     return true;
+}
+
+bool VncClient::stepVeNCryptVersion()
+{
+    if (avail() < 2)
+        return false;
+    const int major = u8(0);
+    const int minor = u8(1);
+    consume(2);
+    // 0.2 is the version every current server speaks (0.1 had different sub-types).
+    if (major != 0 || minor < 2) {
+        send(QByteArray(2, '\0')); // tells the server we can't go on
+        fail(QStringLiteral("Unsupported VeNCrypt version %1.%2").arg(major).arg(minor));
+        return false;
+    }
+    QByteArray reply;
+    reply.append('\0');
+    reply.append('\2');
+    send(reply);
+    m_stage = Stage::VeNCryptStatus;
+    return true;
+}
+
+bool VncClient::stepVeNCryptStatus()
+{
+    if (avail() < 1)
+        return false;
+    const int status = u8(0);
+    consume(1);
+    if (status != 0) {
+        fail(QStringLiteral("The server refused VeNCrypt version 0.2"));
+        return false;
+    }
+    m_stage = Stage::VeNCryptSubtypes;
+    return true;
+}
+
+namespace
+{
+// VeNCrypt sub-types.
+enum : quint32
+{
+    VeNCryptPlain = 256,
+    VeNCryptTlsNone = 257,
+    VeNCryptTlsVnc = 258,
+    VeNCryptTlsPlain = 259,
+    VeNCryptX509None = 260,
+    VeNCryptX509Vnc = 261,
+    VeNCryptX509Plain = 262,
+};
+} // namespace
+
+bool VncClient::stepVeNCryptSubtypes()
+{
+    if (avail() < 1)
+        return false;
+    const int count = u8(0);
+    if (avail() < 1 + 4 * count)
+        return false;
+
+    // The first one the server lists that we support: the server's order is
+    // its preference. The unencrypted Plain sub-type (256) is never chosen.
+    quint32 chosen = 0;
+    QStringList offered;
+    for (int i = 0; i < count; ++i) {
+        const quint32 subtype = u32(1 + 4 * i);
+        offered.append(QString::number(subtype));
+        const bool supported = (subtype >= VeNCryptTlsNone && subtype <= VeNCryptX509Plain) || subtype == 1 || subtype == 2;
+        if (!chosen && supported)
+            chosen = subtype;
+    }
+    consume(1 + 4 * count);
+
+    if (!chosen) {
+        fail(QStringLiteral("The server offers no VeNCrypt sub-type lvdterm supports (offered: %1)").arg(offered.join(QStringLiteral(", "))));
+        return false;
+    }
+
+    QByteArray reply;
+    putU32(reply, chosen);
+    send(reply);
+
+    if (chosen == 1 || chosen == 2) {
+        // Plain None / VNC password chosen through VeNCrypt: no TLS, but a
+        // security result always follows.
+        m_securityType = static_cast<quint8>(chosen);
+        m_stage = chosen == 1 ? Stage::SecurityResult : Stage::AuthChallenge;
+        return true;
+    }
+
+    m_securityType = 19;
+    m_veNCryptSubtype = chosen;
+    m_stage = Stage::VeNCryptAck;
+    return true;
+}
+
+bool VncClient::stepVeNCryptAck()
+{
+    if (avail() < 1)
+        return false;
+    const int ack = u8(0);
+    consume(1);
+    if (ack != 1) {
+        fail(QStringLiteral("The server refused VeNCrypt sub-type %1").arg(m_veNCryptSubtype));
+        return false;
+    }
+
+    const bool x509 = m_veNCryptSubtype >= VeNCryptX509None;
+    AfterTls after = AfterTls::SecurityResult;
+    switch (m_veNCryptSubtype) {
+    case VeNCryptTlsVnc:
+    case VeNCryptX509Vnc: after = AfterTls::AuthChallenge; break;
+    case VeNCryptTlsPlain:
+    case VeNCryptX509Plain: after = AfterTls::Plain; break;
+    default: after = AfterTls::SecurityResult; break;
+    }
+    startTls(x509, after);
+    return true;
+}
+
+void VncClient::startTls(bool x509, AfterTls after)
+{
+    // Anything already received belongs to the TLS stream (normally nothing:
+    // the server waits for our ClientHello).
+    const QByteArray leftover = m_buf.mid(m_pos);
+    m_buf.clear();
+    m_pos = 0;
+
+    m_tls = std::make_unique<VncTls>();
+    m_inTlsDone = false;
+    m_tlsX509 = x509;
+    m_afterTls = after;
+    m_stage = Stage::TlsHandshake;
+
+    QString error;
+    if (!m_tls->start(x509 ? VncTls::Mode::X509 : VncTls::Mode::Anonymous, m_host, &error)) {
+        failTls(error);
+        return;
+    }
+    flushTls(); // the ClientHello
+    if (!leftover.isEmpty())
+        feedTls(leftover);
+}
+
+void VncClient::feedTls(const QByteArray &cipher)
+{
+    QByteArray plain;
+    QString error;
+    if (!m_tls->feed(cipher, &plain, &error)) {
+        if (m_stage == Stage::TlsHandshake)
+            failTls(error);
+        else
+            fail(error);
+        return;
+    }
+    flushTls();
+    m_buf.append(plain);
+    if (m_stage == Stage::TlsHandshake && m_tls->handshakeDone() && !m_inTlsDone) {
+        m_inTlsDone = true;
+        onTlsHandshakeDone();
+        m_inTlsDone = false;
+    }
+}
+
+void VncClient::flushTls()
+{
+    if (!m_tls || !m_socket)
+        return;
+    const QByteArray out = m_tls->takeOutgoing();
+    if (!out.isEmpty())
+        m_socket->write(out);
+}
+
+void VncClient::onTlsHandshakeDone()
+{
+    if (m_tlsX509) {
+        const QString fingerprint = m_tls->peerFingerprint();
+        if (fingerprint.isEmpty()) {
+            fail(QStringLiteral("The VNC server sent no certificate"));
+            return;
+        }
+        if (!m_certificateChecker || !m_certificateChecker(fingerprint, m_tls->peerSubject(), m_tls->peerIssuer())) {
+            fail(QStringLiteral("The server's certificate was not accepted"));
+            return;
+        }
+        // The prompt ran a nested event loop: the connection may be gone by now.
+        if (m_stage != Stage::TlsHandshake || !m_tls)
+            return;
+    }
+
+    switch (m_afterTls) {
+    case AfterTls::SecurityTypes: m_stage = Stage::SecurityTypes; break;
+    case AfterTls::SecurityResult: m_stage = Stage::SecurityResult; break;
+    case AfterTls::AuthChallenge: m_stage = Stage::AuthChallenge; break;
+    case AfterTls::Plain: sendPlainCredentials(); break;
+    }
+}
+
+void VncClient::sendPlainCredentials()
+{
+    QString user = m_username;
+    QString password = m_password;
+    if ((user.isEmpty() || password.isEmpty()) && m_credentialsProvider) {
+        if (!m_credentialsProvider(user, password)) {
+            fail(QStringLiteral("Cancelled"));
+            return;
+        }
+        if (m_stage != Stage::TlsHandshake || !m_tls)
+            return;
+        m_username = user;
+        m_password = password;
+    }
+    const QByteArray u = user.toUtf8();
+    const QByteArray p = password.toUtf8();
+    QByteArray msg;
+    putU32(msg, static_cast<quint32>(u.size()));
+    putU32(msg, static_cast<quint32>(p.size()));
+    msg.append(u);
+    msg.append(p);
+    send(msg);
+    m_stage = Stage::SecurityResult;
+}
+
+void VncClient::failTls(const QString &message)
+{
+    // The server also takes a plain login: try once more without TLS rather
+    // than not connecting at all (it offered those in the clear anyway).
+    if (m_allowTls && m_plainOffered) {
+        m_allowTls = false;
+        startConnection();
+        return;
+    }
+    fail(message);
+}
+
+void VncClient::send(const QByteArray &data)
+{
+    if (!m_socket)
+        return;
+    if (!m_tls) {
+        m_socket->write(data);
+        return;
+    }
+    QString error;
+    if (!m_tls->write(data, &error)) {
+        fail(error);
+        return;
+    }
+    flushTls();
 }
 
 bool VncClient::stepAuthChallenge()
@@ -337,7 +629,7 @@ bool VncClient::stepAuthChallenge()
         m_password = entered;
     }
 
-    m_socket->write(encryptChallenge(challenge, m_password));
+    send(encryptChallenge(challenge, m_password));
     m_stage = Stage::SecurityResult;
     return true;
 }
@@ -379,7 +671,7 @@ bool VncClient::stepSecurityReason()
 
 void VncClient::sendClientInit()
 {
-    m_socket->write(QByteArray(1, '\1')); // shared: don't kick other viewers off
+    send(QByteArray(1, '\1')); // shared: don't kick other viewers off
     m_stage = Stage::ServerInit;
 }
 
@@ -446,7 +738,7 @@ void VncClient::sendPixelFormatAndEncodings()
     for (const qint32 e : encodings)
         putU32(msg, static_cast<quint32>(e));
 
-    m_socket->write(msg);
+    send(msg);
 }
 
 void VncClient::requestUpdate(bool incremental)
@@ -460,7 +752,7 @@ void VncClient::requestUpdate(bool incremental)
     putU16(msg, 0);
     putU16(msg, static_cast<quint16>(m_work.width()));
     putU16(msg, static_cast<quint16>(m_work.height()));
-    m_socket->write(msg);
+    send(msg);
 }
 
 bool VncClient::stepRunning()
@@ -1100,7 +1392,7 @@ void VncClient::sendPointer(int x, int y, int buttonMask)
     msg.append(static_cast<char>(buttonMask));
     putU16(msg, static_cast<quint16>(qBound(0, x, 65535)));
     putU16(msg, static_cast<quint16>(qBound(0, y, 65535)));
-    m_socket->write(msg);
+    send(msg);
 }
 
 void VncClient::sendKey(quint32 keysym, bool down)
@@ -1112,7 +1404,7 @@ void VncClient::sendKey(quint32 keysym, bool down)
     msg.append(down ? '\1' : '\0');
     msg.append(2, '\0');
     putU32(msg, keysym);
-    m_socket->write(msg);
+    send(msg);
 }
 
 void VncClient::sendClipboardText(const QString &text)
@@ -1125,7 +1417,7 @@ void VncClient::sendClipboardText(const QString &text)
     msg.append(3, '\0');
     putU32(msg, static_cast<quint32>(latin1.size()));
     msg.append(latin1);
-    m_socket->write(msg);
+    send(msg);
 }
 
 QByteArray VncClient::encryptChallenge(const QByteArray &challenge, const QString &password)

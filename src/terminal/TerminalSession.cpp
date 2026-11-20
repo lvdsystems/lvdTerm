@@ -35,8 +35,14 @@ void TerminalSession::setTransport(Transport *transport)
 
     m_transport = transport;
 
-    if (m_transport)
+    if (m_transport) {
         connect(m_transport, &Transport::readyRead, this, &TerminalSession::onTransportReadyRead);
+        // A new transport (reconnect, respawn, changed settings) starts out
+        // with its own default size (80x24): the view's size only reaches a
+        // transport when it changes, so without this the remote side kept
+        // the default until the window was next resized.
+        updateTerminalSize();
+    }
 }
 
 void TerminalSession::attachView(TerminalDisplay *view)

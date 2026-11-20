@@ -52,6 +52,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     , m_gapSpin(new QSpinBox(this))
     , m_rightClickCombo(new QComboBox(this))
     , m_copyOnSelectCombo(new QComboBox(this))
+    , m_tabActivityCombo(new QComboBox(this))
 {
     setWindowTitle(QStringLiteral("Settings"));
 
@@ -108,6 +109,12 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     connect(m_copyOnSelectCombo, &QComboBox::currentIndexChanged, this,
             [this] { AppSettings::instance().setCopyOnSelect(m_copyOnSelectCombo->currentData().toBool()); });
 
+    m_tabActivityCombo->addItem(QStringLiteral("Disabled"), false);
+    m_tabActivityCombo->addItem(QStringLiteral("Enabled - halo on the tab's LED when it has unseen output"), true);
+    m_tabActivityCombo->setCurrentIndex(AppSettings::instance().tabActivityIndicator() ? 1 : 0);
+    connect(m_tabActivityCombo, &QComboBox::currentIndexChanged, this,
+            [this] { AppSettings::instance().setTabActivityIndicator(m_tabActivityCombo->currentData().toBool()); });
+
     refreshColorButtons();
 
     auto *form = new QFormLayout();
@@ -116,6 +123,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     form->addRow(QStringLiteral("Terminal font:"), m_fontCombo);
     form->addRow(QStringLiteral("Font size:"), m_fontSizeSpin);
     form->addRow(QStringLiteral("Default keyboard profile:"), m_keyboardProfileCombo);
+    form->addRow(QStringLiteral("Tab activity:"), m_tabActivityCombo);
 
     auto *panesHeading = new QLabel(QStringLiteral("<b>Split panes</b>"), this);
     form->addRow(panesHeading);

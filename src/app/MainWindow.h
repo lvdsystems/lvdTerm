@@ -44,6 +44,7 @@ public:
 protected:
     void closeEvent(QCloseEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    void changeEvent(QEvent *event) override; // window (de)activation: clears the current tab's activity halo
 
 private:
     // Builds a Transport the same way a quick-connect dialog would, but
@@ -133,6 +134,10 @@ private:
 
     QWidget *tabRootOf(QWidget *w) const; // walks up to the tab-page ancestor, or nullptr
     void updateTabIcon(QWidget *tabRoot);
+    // Tab activity halo: output from `view` the user isn't looking at marks
+    // it unseen; showing its tab (in the active window) clears that.
+    void onViewOutput(TerminalView *view);
+    void markCurrentTabSeen();
     static QVector<TerminalView *> collectViews(QWidget *root);
 
     // Session save/restore (see SessionStore) - captureNode()/buildNode()

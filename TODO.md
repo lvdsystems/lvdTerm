@@ -5,18 +5,20 @@ see the README for the broader feature picture and what's deliberately
 out of scope for now. Open an issue before starting on any of these
 (see [CONTRIBUTING.md](CONTRIBUTING.md)) so effort doesn't collide.
 
-## Next release (0.7)
+## Next release (1.1) ✅ implemented, see CHANGELOG "Unreleased"
 
-- **X11 forwarding for SSH**: a per-connection flag in the connection
-  settings (default: on) that requests X11 forwarding on the SSH channel,
-  so remote X clients display on the machine running lvdterm.
-- **Local X server**: bundle/launch a local X server so those forwarded
-  remote windows have somewhere to display (mainly for Windows, which has
-  none of its own).
-- **RDP and VNC connections**: new connection types, displayed in a tab
-  like the existing SSH/Telnet/Serial ones.
-- **Detach a tab**: move a tab out into its own separate window, and
-  presumably drag it back.
+- ✅ **VNC security**: TLS (type 18) and VeNCrypt (type 19) with its
+  TLS*/X509* sub-types, over OpenSSL (`src/transports/vnc/VncTls.cpp`);
+  X509 certificates trusted on first use (Trust Always / Once / Reject).
+  Still missing: VeNCrypt's unencrypted Plain sub-type (256), deliberately
+  (it sends the password in the clear).
+- ✅ **Terminal size after a reconnect**: a new transport now gets the
+  pane's current size (`TerminalSession::setTransport()`), and it is sent
+  again on reaching Connected.
+- ✅ **Docks can be made very small**: 48 px minimum width; the SFTP
+  toolbar drops its labels when narrow; lists no longer impose their
+  scroll-bar minimum.
+- ✅ **Activity halo on the tab LED** (Settings > General > Tab activity).
 
 ## Build OpenSSL from source instead of vendoring a prebuilt binary
 

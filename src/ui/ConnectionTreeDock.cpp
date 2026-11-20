@@ -92,6 +92,10 @@ ConnectionTreeDock::ConnectionTreeDock(ProfileStore *store, QWidget *parent)
     layout->addWidget(m_tree);
     setWidget(container);
 
+    // The list's natural minimum (room for both scroll bars) would stop
+    // the dock well before a thin strip; the toolbar already overflows.
+    m_tree->setMinimumSize(0, 36);
+
     connect(m_store, &ProfileStore::changed, this, &ConnectionTreeDock::rebuildTree);
     rebuildTree();
 }

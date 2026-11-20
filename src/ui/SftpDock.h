@@ -138,6 +138,12 @@ private:
     DropOverlay *m_dropOverlay = nullptr;
     QHash<QString, QPointer<SftpFileEditor>> m_editors; // open editors by user@host:port:path
     QToolButton *m_copyPathButton = nullptr;
+    // Narrow dock: the toolbar (and Copy) drop their labels rather than
+    // stacking one labelled button per row - see updateToolbarCompact().
+    void updateToolbarCompact();
+    QVector<QToolButton *> m_toolButtons;
+    int m_labelledToolbarWidth = 0;
+    bool m_toolbarCompact = false;
     QLabel *m_statusLabel = nullptr;
     QProgressBar *m_progressBar = nullptr;
 

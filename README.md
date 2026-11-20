@@ -96,8 +96,9 @@ the view that actually makes sense for it:
   that differ between them (arrows, Home/End, function keys, Backspace).
 - **VNC**: view and control a remote desktop in a pane (or a tab), using
   lvdterm's own built-in VNC client - no external viewer needed. Supports
-  VNC password login and text clipboard (Ctrl+C / Ctrl+V work across the two
-  machines); encrypted VNC variants are not supported yet.
+  VNC password login, encrypted sessions (TLS and VeNCrypt, with the server
+  certificate checked on first use like an SSH host key) and text clipboard
+  (Ctrl+C / Ctrl+V work across the two machines).
 - **RDP**: connect to Windows machines (and xrdp servers) in a pane, using
   the vendored [FreeRDP](https://www.freerdp.com/) library. Mouse, keyboard
   and text clipboard (Ctrl+C / Ctrl+V work across the two machines); no audio

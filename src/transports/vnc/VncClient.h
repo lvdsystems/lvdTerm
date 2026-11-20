@@ -13,19 +13,27 @@
 #include <QRect>
 
 class QTcpSocket;
+class VncTls;
 
 // lvdterm's own VNC (RFB 3.3/3.7/3.8) client: the protocol only, no UI.
 // Event-driven on the GUI thread over a QTcpSocket - there is no
 // blocking work worth a thread (VncWidget paints straight from
 // framebuffer()).
 //
-// Supported: security None and VNC Authentication (DES challenge);
+// Supported: security None, VNC Authentication (DES challenge), TLS (type
+// 18, anonymous) and VeNCrypt (type 19) with its TLS and X509 sub-types
+// (None, VNC password or username/password inside TLS - see VncTls);
 // encodings Tight (zlib and JPEG), ZRLE, Hextile, CopyRect and Raw plus the
 // DesktopSize and LastRect pseudo-encodings; pointer, keyboard and clipboard
-// text both ways. Not (yet) supported: VeNCrypt/TLS and the cursor
+// text both ways. Not (yet) supported: VeNCrypt's unencrypted Plain
+// sub-type (it would send the password in the clear) and the cursor
 // pseudo-encodings (the server draws the cursor into the framebuffer
 // instead). The compressed encodings matter a lot on a busy desktop: a
 // window drag over a photograph is ~20x less data as Tight/JPEG than as Hextile.
+//
+// Encrypted security types are preferred when the server offers them. If
+// the TLS handshake itself fails and the server also offered a plain type,
+// the client reconnects once using that instead.
 //
 // The wire pixel format is fixed to 32-bit true colour laid out like
 // QImage::Format_RGB32, so decoded pixels are copied in without conversion.
@@ -46,6 +54,17 @@ public:
     // Asked for the password when the server wants one and none was given.
     // Returns false if the user cancelled.
     void setPasswordProvider(std::function<bool(QString &)> provider) { m_passwordProvider = std::move(provider); }
+    // Asked for a username and password (VeNCrypt's *Plain sub-types).
+    void setCredentialsProvider(std::function<bool(QString &user, QString &password)> provider) { m_credentialsProvider = std::move(provider); }
+    // VeNCrypt X509 sub-types: asked whether to trust the server's
+    // certificate (SHA-256 fingerprint, subject, issuer). False ends the
+    // connection. Without a checker, any certificate is refused.
+    void setCertificateChecker(std::function<bool(const QString &fingerprint, const QString &subject, const QString &issuer)> checker)
+    {
+        m_certificateChecker = std::move(checker);
+    }
+    // Whether the current session is encrypted (for display).
+    bool isEncrypted() const { return m_tls != nullptr; }
 
     // Encodings to offer, most preferred first (default: Hextile, CopyRect,
     // Raw plus the DesktopSize pseudo-encoding). For diagnosing a server.
@@ -87,6 +106,11 @@ private:
         Idle,
         Version,
         SecurityTypes,   // 3.7/3.8: list; 3.3: a single type
+        VeNCryptVersion,  // server's VeNCrypt version (2 bytes)
+        VeNCryptStatus,   // 1 byte: 0 = our version reply was accepted
+        VeNCryptSubtypes, // count + that many u32 sub-types
+        VeNCryptAck,      // 1 byte: 1 = our sub-type choice was accepted
+        TlsHandshake,     // waiting for VncTls; then m_afterTls
         AuthChallenge,
         SecurityResult,
         SecurityReason,  // reason string after a failed result / empty list
@@ -99,6 +123,10 @@ private:
     bool step(); // consumes what it can of m_buf for the current stage; false = needs more data
     bool stepVersion();
     bool stepSecurityTypes();
+    bool stepVeNCryptVersion();
+    bool stepVeNCryptStatus();
+    bool stepVeNCryptSubtypes();
+    bool stepVeNCryptAck();
     bool stepAuthChallenge();
     bool stepSecurityResult();
     bool stepSecurityReason();
@@ -111,6 +139,21 @@ private:
     bool setPixel(int x, int y, QRgb color);
 
     void beginSecurity(quint8 type);
+    // What comes after the TLS handshake (VeNCrypt sub-type / type 18).
+    enum class AfterTls
+    {
+        SecurityTypes,  // type 18: the server lists the inner types again
+        SecurityResult, // *None
+        AuthChallenge,  // *Vnc
+        Plain,          // *Plain: send username and password
+    };
+    void startTls(bool x509, AfterTls after);
+    void feedTls(const QByteArray &cipher);
+    void flushTls();
+    void onTlsHandshakeDone();
+    void failTls(const QString &message); // may fall back to a plain security type
+    void sendPlainCredentials();
+    void send(const QByteArray &data); // through TLS once it is on
     void sendClientInit();
     void sendPixelFormatAndEncodings();
     void requestUpdate(bool incremental);
@@ -142,6 +185,19 @@ private:
     int m_pos = 0; // start of unconsumed data in m_buf
     Stage m_stage = Stage::Idle;
     std::function<bool(QString &)> m_passwordProvider;
+    std::function<bool(QString &, QString &)> m_credentialsProvider;
+    std::function<bool(const QString &, const QString &, const QString &)> m_certificateChecker;
+
+    std::unique_ptr<VncTls> m_tls;
+    bool m_tlsX509 = false;
+    quint32 m_veNCryptSubtype = 0;
+    // onTlsHandshakeDone() is asking the user (certificate, credentials):
+    // data arriving meanwhile must not run it a second time.
+    bool m_inTlsDone = false;
+    AfterTls m_afterTls = AfterTls::SecurityTypes;
+    bool m_allowTls = true;     // cleared to retry with a plain type after a failed handshake
+    bool m_plainOffered = false; // the server also offered None or VNC password
+    QString m_username;
 
     QString m_password;
     int m_minor = 3;            // negotiated protocol 3.x

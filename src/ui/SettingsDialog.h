@@ -41,4 +41,5 @@ private:
     QSpinBox *m_gapSpin = nullptr;
     QComboBox *m_rightClickCombo = nullptr;
     QComboBox *m_copyOnSelectCombo = nullptr;
+    QComboBox *m_tabActivityCombo = nullptr;
 };

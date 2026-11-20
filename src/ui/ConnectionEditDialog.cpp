@@ -1,5 +1,6 @@
 #include "ConnectionEditDialog.h"
 
+#include <QAbstractButton>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -30,6 +31,36 @@ QString prettyProfileName(const QString &name)
     if (!pretty.isEmpty())
         pretty[0] = pretty[0].toUpper();
     return pretty;
+}
+
+// The keyboard-focusable widgets inside `root`, in their current Tab order
+// (the window's focus chain filtered to root's descendants), each one
+// resolved to what actually takes focus (its focus proxy), without repeats.
+QList<QWidget *> focusChainOf(QWidget *root)
+{
+    QList<QWidget *> result;
+    QWidget *start = root->window();
+    QWidget *w = start;
+    do {
+        w = w->nextInFocusChain();
+        if (!root->isAncestorOf(w))
+            continue;
+        QWidget *target = w;
+        while (target->focusProxy())
+            target = target->focusProxy();
+        if ((target->focusPolicy() & Qt::TabFocus) && !result.contains(target))
+            result.append(target);
+    } while (w != start);
+    return result;
+}
+
+// Makes Tab visit `widgets` in exactly this order.
+void setTabChain(const QList<QWidget *> &widgets)
+{
+    for (qsizetype i = 1; i < widgets.size(); ++i) {
+        if (widgets[i - 1] != widgets[i])
+            QWidget::setTabOrder(widgets[i - 1], widgets[i]);
+    }
 }
 } // namespace
 
@@ -181,6 +212,19 @@ ConnectionEditDialog::ConnectionEditDialog(QWidget *parent, const QString &defau
     layout->addLayout(bottomForm);
     layout->addWidget(dpapiNote);
     layout->addWidget(buttons);
+
+    // Tab follows the layout top to bottom: Name, Folder, Type, the chosen
+    // type's own fields, then the general options and the buttons. Left to
+    // creation order, Tab went from Type to the options at the bottom and
+    // only then back up to Host/Port. The pages of every type are in the
+    // chain; Tab only stops in the one that is showing.
+    QList<QWidget *> chain{m_nameEdit, m_folderCombo, m_typeCombo};
+    chain += focusChainOf(m_typeStack);
+    chain += QList<QWidget *>{m_autoReconnectCheck, m_keyboardProfileCombo, m_viewerCombo,
+                              m_logSessionCheck,    m_logFilePathEdit,     m_logFileBrowseButton, m_logTimestampCheck};
+    for (QAbstractButton *button : buttons->buttons())
+        chain.append(button);
+    setTabChain(chain);
 
     updateTypeStack();
     m_nameEdit->setFocus();

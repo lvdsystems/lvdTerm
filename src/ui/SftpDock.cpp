@@ -63,6 +63,26 @@ QIcon makeUpLevelIcon()
     painter.drawLine(QPointF(3, 13), QPointF(13, 13));
     return QIcon(pixmap);
 }
+
+// No standard icon for rename: a text field with a caret. Needed once the
+// toolbar drops its labels in a narrow dock (see updateToolbarCompact()).
+QIcon makeRenameIcon()
+{
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPen pen(QApplication::palette().color(QPalette::ButtonText));
+    pen.setWidthF(1.3);
+    painter.setPen(pen);
+    painter.drawRoundedRect(QRectF(1.5, 4.5, 13, 7), 1.5, 1.5);
+    pen.setWidthF(1.6);
+    painter.setPen(pen);
+    painter.drawLine(QPointF(9, 2.5), QPointF(9, 13.5));
+    painter.drawLine(QPointF(7.5, 2.5), QPointF(10.5, 2.5));
+    painter.drawLine(QPointF(7.5, 13.5), QPointF(10.5, 13.5));
+    return QIcon(pixmap);
+}
 } // namespace
 
 // A single-folder, Explorer-style listing (not a tree - see SftpDock.h)
@@ -616,6 +636,7 @@ SftpDock::SftpDock(QWidget *parent)
         button->setIconSize(QSize(16, 16));
         button->setAutoRaise(true);
         flow->addWidget(button);
+        m_toolButtons.append(button);
         return action;
     };
     auto stdIcon = [this](QStyle::StandardPixmap pixmap) { return style()->standardIcon(pixmap); };
@@ -627,7 +648,7 @@ SftpDock::SftpDock(QWidget *parent)
     addToolAction(stdIcon(QStyle::SP_ArrowDown), QStringLiteral("Download"), QStringLiteral("Download..."), &SftpDock::downloadSelected);
     addToolAction(stdIcon(QStyle::SP_FileDialogNewFolder), QStringLiteral("New Folder"), QStringLiteral("New Folder..."), &SftpDock::newFolder);
     // No good standard icon for rename - the text label alone, no icon.
-    addToolAction(QIcon(), QStringLiteral("Rename"), QStringLiteral("Rename..."), &SftpDock::renameSelected);
+    addToolAction(makeRenameIcon(), QStringLiteral("Rename"), QStringLiteral("Rename..."), &SftpDock::renameSelected);
     addToolAction(stdIcon(QStyle::SP_TrashIcon), QStringLiteral("Delete"), QStringLiteral("Delete"), &SftpDock::deleteSelected);
     addToolAction(stdIcon(QStyle::SP_BrowserReload), QStringLiteral("Refresh"), QStringLiteral("Refresh"), &SftpDock::refresh);
 
@@ -657,6 +678,14 @@ SftpDock::SftpDock(QWidget *parent)
     layout->addWidget(m_statusLabel);
     layout->addWidget(m_progressBar);
     setWidget(container);
+
+    // Let the dock shrink to a thin strip: none of these may impose its
+    // natural minimum (a long status message's full width, a list's room
+    // for scroll bars, one labelled button per row in a narrow toolbar).
+    m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_progressBar->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    m_view->setMinimumSize(0, 36);
+    m_toolbar->installEventFilter(this); // Resize: labels on/off, see updateToolbarCompact()
 
     // The hint covers just the file list (header and all) - the part that
     // actually receives the files - not the toolbar or path bar around it.
@@ -952,7 +981,32 @@ bool SftpDock::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == m_view && event->type() == QEvent::Resize)
         m_dropOverlay->setGeometry(m_view->rect());
+    if (watched == m_toolbar && event->type() == QEvent::Resize)
+        updateToolbarCompact();
     return QDockWidget::eventFilter(watched, event);
+}
+
+void SftpDock::updateToolbarCompact()
+{
+    // Measured while the labels are showing (they are at first), so the
+    // threshold doesn't move once they're hidden.
+    if (!m_toolbarCompact) {
+        int total = 0;
+        for (QToolButton *button : std::as_const(m_toolButtons))
+            total += button->sizeHint().width() + 2;
+        m_labelledToolbarWidth = total;
+    }
+
+    // Labels while they fit in two rows; narrower than that, icons only
+    // (full names stay as tooltips) instead of a tall stack of rows.
+    const bool compact = m_labelledToolbarWidth > 0 && m_toolbar->width() < m_labelledToolbarWidth / 2;
+    if (compact == m_toolbarCompact)
+        return;
+    m_toolbarCompact = compact;
+    const Qt::ToolButtonStyle style = compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon;
+    for (QToolButton *button : std::as_const(m_toolButtons))
+        button->setToolButtonStyle(style);
+    m_copyPathButton->setToolButtonStyle(style);
 }
 
 // Drags that land on the dock outside the file list (toolbar, path bar,

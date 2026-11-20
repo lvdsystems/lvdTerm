@@ -111,6 +111,10 @@ SshSettingsWidget::SshSettingsWidget(QWidget *parent)
     form->addRow(x11Note);
 #endif
 
+    // Tab follows the layout: Browse... sits right of the key path, before
+    // Passphrase (it is created after Passphrase, which Tab would follow).
+    setTabOrder(m_keyPathEdit, browseButton);
+
     updateAuthStack();
 }
 

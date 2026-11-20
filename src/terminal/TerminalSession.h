@@ -35,6 +35,10 @@ public:
 
     Konsole::Vt102Emulation *emulation() const { return m_emulation; }
 
+    // Tells the transport the view's current columns/lines again, even if
+    // they haven't changed (e.g. right after a (re)connect).
+    void resendTerminalSize() { updateTerminalSize(); }
+
 signals:
     void titleChanged(int titleId, const QString &newTitle);
     void bellRequest(const QString &message);

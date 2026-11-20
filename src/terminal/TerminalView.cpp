@@ -638,6 +638,13 @@ void TerminalView::hookTransportSignals()
     connect(m_transport, &Transport::stateChanged, this, &TerminalView::onStateChanged);
     connect(m_transport, &Transport::errorOccurred, this, &TerminalView::errorOccurred);
     connect(m_transport, &Transport::readyRead, this, &TerminalView::onDataForLogging);
+    if (!m_vncMode && !m_rdpMode) {
+        connect(m_transport, &Transport::readyRead, this, [this](const QByteArray &data) {
+            constexpr qint64 kGraceMs = 3000;
+            if (!data.isEmpty() && m_connectedSince.isValid() && m_connectedSince.elapsed() >= kGraceMs)
+                emit outputActivity();
+        });
+    }
 
     if (auto *ssh = qobject_cast<SshTransport *>(m_transport)) {
         connect(ssh, &SshTransport::passwordAccepted, this, [this](const QString &password) {
@@ -688,6 +695,11 @@ void TerminalView::onStateChanged(Transport::State state)
         m_attempt = 0;
         m_gaveUp = false;
         hideOverlay();
+        m_connectedSince.start();
+        // Belt and braces: whatever size the transport was given while
+        // connecting, the remote side gets the one the pane shows now.
+        if (!m_hexMode && !m_vncMode && !m_rdpMode)
+            m_session->resendTerminalSize();
     } else if (state == Transport::State::Disconnected || state == Transport::State::Error) {
         // The only way this view sees a Disconnected/Error transition
         // while still alive is the far end/link actually dying: there is

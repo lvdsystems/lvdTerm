@@ -82,8 +82,19 @@ public:
     bool copyOnSelect() const;
     void setCopyOnSelect(bool enabled);
 
+    // A halo around a tab's status LED when one of its terminals printed
+    // something the user hasn't seen yet. On by default.
+    bool tabActivityIndicator() const;
+    void setTabActivityIndicator(bool enabled);
+
+    // VNC servers' TLS certificates the user chose to trust (VeNCrypt
+    // X509), as SHA-256 fingerprints keyed by "host:port". Empty = unknown.
+    QString knownVncCertificate(const QString &hostPort) const;
+    void setKnownVncCertificate(const QString &hostPort, const QString &fingerprint);
+
 signals:
     void themeChanged(const QString &theme);
+    void tabActivityIndicatorChanged(bool enabled);
     void paneAppearanceChanged(); // pane colours, padding and/or gap
     void terminalAppearanceChanged(); // color scheme and/or font
 

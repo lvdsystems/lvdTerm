@@ -3,6 +3,7 @@
 #include <functional>
 #include <optional>
 
+#include <QElapsedTimer>
 #include <QWidget>
 
 #include "PaneDropZone.h"
@@ -127,6 +128,12 @@ public:
     // the others a neutral one - set by MainWindow::updatePaneFrames().
     void setPaneActive(bool active);
 
+    // Output arrived while the user wasn't looking at this pane (kept by
+    // MainWindow for the tab activity halo; travels with the pane on splits,
+    // moves and tab detaches).
+    bool hasUnseenOutput() const { return m_unseenOutput; }
+    void setUnseenOutput(bool unseen) { m_unseenOutput = unseen; }
+
     // Deliberately small (the natural minimum is ~130 px per pane): every
     // pane adds its minimum to its split's, so with several side by side
     // the window couldn't otherwise be made narrow enough to snap to half
@@ -147,6 +154,10 @@ signals:
     // Another pane was dragged (by its status strip) and dropped on this
     // one. MainWindow owns the pane tree, so it does the actual move.
     void paneDropped(TerminalView *source, PaneDropZone zone);
+    // The terminal (or hex dump) received output. Not emitted for VNC/RDP
+    // panes, nor for the first few seconds after connecting (login banner
+    // and prompt) - see MainWindow's tab activity halo.
+    void outputActivity();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -162,6 +173,7 @@ private:
     // margin is this width plus the configurable padding.
     static constexpr int kBorderWidth = 2;
     bool m_paneActive = false;
+    bool m_unseenOutput = false;
     QVBoxLayout *m_rootLayout = nullptr;
     QWidget *m_toast = nullptr; // "Copied to clipboard", created on first use - see showCopiedToast()
     QTimer *m_toastTimer = nullptr;
@@ -232,6 +244,10 @@ private:
     // ConnectionProfile::Type::Rdp: likewise, with RdpWidget fed by RdpTransport.
     const bool m_rdpMode = false;
     RdpWidget *m_rdpView = nullptr;
+
+    // When the transport last reached Connected - output during the grace
+    // period after it doesn't count as activity (see outputActivity()).
+    QElapsedTimer m_connectedSince;
 
     bool m_autoReconnect = true;
     int m_attempt = 0;

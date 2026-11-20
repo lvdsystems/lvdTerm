@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.1
+
+### New Features
+- **Encrypted VNC**: VNC servers that require encryption now connect - TLS
+  (security type 18) and VeNCrypt (type 19) with its TLS and X509 variants, with
+  a VNC password, a username and password, or no login inside the encrypted
+  session. An X509 server's certificate is shown the first time (Trust Always /
+  Trust Once / Reject) and a changed one is warned about, like an SSH host key.
+  Encryption is preferred whenever the server offers it.
+- **Tab activity halo**: a tab whose terminal (any of them, when split) prints
+  something while you're looking elsewhere gets a glowing halo around its LED,
+  until you open it. Output during the first seconds of a connection (banner,
+  prompt) doesn't count. Settings > General > Tab activity turns it off.
+
+### Bugfix
+- The terminal size given to the remote side didn't match the pane after a
+  reconnect (or respawn / changed settings) until the window was resized: the new
+  connection started at 80x24. It now gets the pane's real size, and the size is
+  sent again once connected.
+- Connection dialogs: Tab now moves through the fields in the order they are
+  shown (Name, Folder, Type, then the type's own fields such as Host and Port,
+  then the general options); it used to jump to the options at the bottom
+  right after Type. Also Browse... (SSH key) and Refresh (serial port) now come
+  right after the field they belong to.
+- The Saved Connections and SFTP docks can be made much narrower; in a narrow
+  SFTP dock the toolbar shows icons only instead of a tall stack of buttons.
+
 ## 1.0
 
 ### Bugfix

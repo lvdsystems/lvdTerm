@@ -75,6 +75,8 @@ add_executable(lvdterm WIN32
     transports/vnc/VncClient.cpp
     transports/vnc/VncClient.h
     transports/vnc/VncConnectionSettings.h
+    transports/vnc/VncTls.cpp
+    transports/vnc/VncTls.h
     transports/vnc/VncTransport.cpp
     transports/vnc/VncTransport.h
     ui/VncConnectDialog.cpp
@@ -168,11 +170,12 @@ if(WIN32)
     # OpenSSL's Windows entropy/cert-store calls.
     target_link_libraries(lvdterm PRIVATE ws2_32 gdi32 crypt32 bcrypt)
 
-    # VncClient uses OpenSSL's DES directly (VNC password challenge), not
-    # just through libssh2 - same vendored static OpenSSL, found via the
+    # VncClient uses OpenSSL's DES directly (VNC password challenge) and
+    # libssl for VNC's TLS security types (VncTls), not just through
+    # libssh2 - same vendored static OpenSSL, found via the
     # OPENSSL_ROOT_DIR the top-level CMakeLists.txt sets.
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(lvdterm PRIVATE OpenSSL::Crypto)
+    target_link_libraries(lvdterm PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
     # Local shells via ConPTY (the Windows counterpart of PtyTransport
     # below); the pseudo-console API itself is resolved from kernel32 at
@@ -198,7 +201,7 @@ else()
     find_package(OpenSSL REQUIRED)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
-    target_link_libraries(lvdterm PRIVATE OpenSSL::Crypto PkgConfig::LIBSECRET)
+    target_link_libraries(lvdterm PRIVATE OpenSSL::SSL OpenSSL::Crypto PkgConfig::LIBSECRET)
 endif()
 
 # Bundle the Qt runtime DLLs next to lvdterm.exe automatically, instead of

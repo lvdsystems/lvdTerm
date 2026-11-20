@@ -121,11 +121,24 @@ MainWindow::MainWindow(MainWindow *primary)
 
     // The docks' natural minimums (~140 px: the widest button/column) add
     // up with the central area's to a window too wide to snap to half a
-    // screen. Let them squeeze further - contents just clip.
-    m_connectionDock->setMinimumWidth(100);
-    m_sftpDock->setMinimumWidth(100);
+    // screen. Let them squeeze down to a thin strip - contents clip, and
+    // the SFTP toolbar drops its labels (see SftpDock::updateToolbarCompact()).
+    m_connectionDock->setMinimumWidth(48);
+    m_sftpDock->setMinimumWidth(48);
 
     connect(qApp, &QApplication::focusChanged, this, &MainWindow::onFocusChanged);
+
+    // Turning the activity halo off clears every halo already shown.
+    connect(&AppSettings::instance(), &AppSettings::tabActivityIndicatorChanged, this, [this](bool enabled) {
+        if (enabled)
+            return;
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            QWidget *root = m_tabs->widget(i);
+            for (TerminalView *view : collectViews(root))
+                view->setUnseenOutput(false);
+            updateTabIcon(root);
+        }
+    });
 
     createMenus();
 
@@ -715,6 +728,7 @@ void MainWindow::wireView(TerminalView *view)
         if (state == Transport::State::Connected && view->sshSettings())
             m_sftpDock->connectionUp(*view->sshSettings());
     });
+    connect(view, &TerminalView::outputActivity, this, [this, view] { onViewOutput(view); });
     connect(view, &TerminalView::sshSettingsChanged, this, [this, view] {
         if (view == currentActiveView())
             m_sftpDock->setActiveConnection(view->sshSettings());
@@ -1305,6 +1319,7 @@ void MainWindow::onCurrentTabChanged(int index)
     if (!views.isEmpty())
         views.first()->setFocus();
     updatePaneFrames();
+    markCurrentTabSeen();
 }
 
 void MainWindow::renameTab(int index)
@@ -1380,7 +1395,11 @@ void MainWindow::updateTabIcon(QWidget *tabRoot)
     // other panes are fine, since that's the one that needs attention.
     Transport::State worst = Transport::State::Connected;
     bool any = false;
-    for (TerminalView *view : collectViews(tabRoot)) {
+    bool unseen = false;
+    const QVector<TerminalView *> views = collectViews(tabRoot);
+    for (TerminalView *view : views)
+        unseen = unseen || view->hasUnseenOutput();
+    for (TerminalView *view : views) {
         const Transport::State s = view->transportState();
         any = true;
         if (s == Transport::State::Error) {
@@ -1394,7 +1413,44 @@ void MainWindow::updateTabIcon(QWidget *tabRoot)
     }
 
     if (any)
-        m_tabs->setTabIcon(index, StateIcon::icon(worst));
+        m_tabs->setTabIcon(index, StateIcon::tabIcon(worst, unseen));
+}
+
+void MainWindow::onViewOutput(TerminalView *view)
+{
+    if (view->hasUnseenOutput() || !AppSettings::instance().tabActivityIndicator())
+        return;
+    QWidget *root = tabRootOf(view);
+    if (!root)
+        return;
+    // Looking at it already: its tab is the current one in the active window.
+    if (root == m_tabs->currentWidget() && isActiveWindow() && !isMinimized())
+        return;
+    view->setUnseenOutput(true);
+    updateTabIcon(root);
+}
+
+void MainWindow::markCurrentTabSeen()
+{
+    QWidget *root = m_tabs->currentWidget();
+    if (!root || !isActiveWindow() || isMinimized())
+        return;
+    bool changed = false;
+    for (TerminalView *view : collectViews(root)) {
+        if (view->hasUnseenOutput()) {
+            view->setUnseenOutput(false);
+            changed = true;
+        }
+    }
+    if (changed)
+        updateTabIcon(root);
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::ActivationChange || event->type() == QEvent::WindowStateChange)
+        markCurrentTabSeen();
 }
 
 std::optional<SessionNode> MainWindow::captureNode(QWidget *widget) const

@@ -1,6 +1,7 @@
 #include "AppSettings.h"
 
 #include <QFontDatabase>
+#include <QUrl>
 
 namespace
 {
@@ -15,6 +16,7 @@ constexpr auto kPanePaddingKey = "panes/padding";
 constexpr auto kPaneGapKey = "panes/gap";
 constexpr auto kRightClickKey = "mouse/rightClick";
 constexpr auto kCopyOnSelectKey = "mouse/copyOnSelect";
+constexpr auto kTabActivityKey = "tabs/activityIndicator";
 
 constexpr auto kDefaultTheme = "Dark";
 constexpr auto kDefaultColorScheme = "Dark";
@@ -190,4 +192,34 @@ bool AppSettings::copyOnSelect() const
 void AppSettings::setCopyOnSelect(bool enabled)
 {
     m_settings.setValue(QLatin1String(kCopyOnSelectKey), enabled);
+}
+
+// QSettings keys can't hold '/' or '\' safely; host:port has neither, but
+// percent-encoding keeps any odd host string (IPv6 with a zone, etc.) intact.
+static QString vncCertKey(const QString &hostPort)
+{
+    return QStringLiteral("vncCertificates/") + QString::fromLatin1(QUrl::toPercentEncoding(hostPort));
+}
+
+QString AppSettings::knownVncCertificate(const QString &hostPort) const
+{
+    return m_settings.value(vncCertKey(hostPort)).toString();
+}
+
+void AppSettings::setKnownVncCertificate(const QString &hostPort, const QString &fingerprint)
+{
+    m_settings.setValue(vncCertKey(hostPort), fingerprint);
+}
+
+bool AppSettings::tabActivityIndicator() const
+{
+    return m_settings.value(QLatin1String(kTabActivityKey), true).toBool();
+}
+
+void AppSettings::setTabActivityIndicator(bool enabled)
+{
+    if (enabled == tabActivityIndicator())
+        return;
+    m_settings.setValue(QLatin1String(kTabActivityKey), enabled);
+    emit tabActivityIndicatorChanged(enabled);
 }

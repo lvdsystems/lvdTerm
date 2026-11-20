@@ -41,6 +41,8 @@ the explanation after the list.
 - **Used as:** a statically-linked static build providing libssh2's crypto
   backend (chosen over WinCNG/mbedTLS specifically for ed25519/
   curve25519-sha256 support) - see `third_party/openssl-prebuilt/BUILDING.md`.
+  lvdterm's own VNC client also uses it directly: DES for the VNC password
+  and TLS for VNC's encrypted security types (`src/transports/vnc/VncTls.cpp`).
 - **Full license:** `third_party/openssl-prebuilt/LICENSE.txt`.
 
 ## FreeRDP (vendored)
